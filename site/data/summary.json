@@ -6,10 +6,10 @@
   "dropped_rows": 48,
   "points": 12379,
   "coord_removed": 0,
-  "coord_approx": 504,
-  "coord_fixed": 2,
+  "coord_approx": 358,
+  "coord_fixed": 157,
   "values_inferred": 9,
   "taipei_rows": 1226,
   "taipei_points": 1226,
-  "taipei_fixed": 0
+  "taipei_fixed": 2
 }

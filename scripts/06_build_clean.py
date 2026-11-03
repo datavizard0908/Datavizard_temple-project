@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pandas as pd
 import shapefile
-from shapely.geometry import shape
+from shapely.geometry import Point, shape
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from deity_rules import hometown, normalize  # noqa: E402
@@ -86,6 +86,31 @@ def parse_village(addr, town, villages):
     return None
 
 
+NAME_NOISE = re.compile(r"^(財團法人)?(台灣省|臺灣省)?(..[市縣])?(..[區鄉鎮市])?")
+VILLAGE_BUFFER_DEG = 0.003  # 約 300 m，容許村里界與 OSM 點的小誤差
+
+
+def validate_fix(fix, df, villages):
+    """剔除可疑的補點：廟名查到但 OSM 名稱不符、點不在地址村里內，或多間廟共用同一點。"""
+    fix = fix.dropna(subset=["lon"]).copy()
+    info = df.set_index("編號")[["寺廟名稱", "地址", "地址鄉鎮"]]
+    fix = fix[fix.index.isin(info.index)]
+    key = fix["lon"].round(5).astype(str) + "," + fix["lat"].round(5).astype(str)
+    shared = key.map(key.value_counts()) > 1
+    reasons = {}
+    for sid, r in fix.iterrows():
+        name = NAME_NOISE.sub("", info.at[sid, "寺廟名稱"]) or info.at[sid, "寺廟名稱"]
+        osm_name = str(r["osm_name"]).split(",")[0].strip()
+        vill = parse_village(info.at[sid, "地址"], info.at[sid, "地址鄉鎮"], villages)
+        if shared[sid]:
+            reasons[sid] = "多間廟共用同一 OSM 點"
+        elif r["coord_source"] == "nominatim_name" and name not in osm_name:
+            reasons[sid] = f"OSM 名稱不符（{osm_name}）"
+        elif vill and not villages[vill].buffer(VILLAGE_BUFFER_DEG).contains(Point(r["lon"], r["lat"])):
+            reasons[sid] = f"不在地址村里內（{osm_name}）"
+    return fix.drop(index=list(reasons)), reasons
+
+
 def to_geojson(df, path):
     props = [c for c in df.columns if c not in ("lon", "lat")]
     features = [{
@@ -127,6 +152,10 @@ def main():
         log.append((df.at[i, "編號"], "補值", "教別", f"由主神與廟名推定為 {guess}"))
 
     # 座標
+    villages, towns = load_areas()
+    fix, rejected = validate_fix(fix, df, villages)
+    for sid, why in rejected.items():
+        log.append((sid, "不採用補點", "座標", why))
     df["lon"], df["lat"] = df["WGS84X"], df["WGS84Y"]
     df["coord_source"] = "原始資料"
     df["coord_flag"] = ""
@@ -148,7 +177,6 @@ def main():
             df.loc[i, ["lon", "lat", "coord_source", "coord_flag"]] = [None, None, None, ""]
 
     # 仍無座標者：退到地址中村里的代表點，再退到鄉鎮代表點；標為概略位置，分析時排除
-    villages, towns = load_areas()
     for i in df.index[df["lon"].isna()]:
         sid, town = df.at[i, "編號"], df.at[i, "地址鄉鎮"]
         vill = parse_village(df.at[i, "地址"], town, villages)
