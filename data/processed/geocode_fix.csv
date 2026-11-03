@@ -1,0 +1,5 @@
+﻿編號,原coord_status,lon,lat,coord_source,coord_precision,osm,osm_name
+1746814,同縣市其他鄉鎮,,,,,,
+1746858,缺座標,120.4315748,23.3784585,nominatim_name,POI,amenity/place_of_worship,"善主公廟, 28之6, 番子園, 竹門里, 白河區, 臺南市, 732, 臺灣"
+1746903,缺座標,120.2703345,22.8755354,nominatim_addr,道路,highway/tertiary,"大智路, 甲南里, 路竹區, 下社, 高雄市, 821, 臺灣"
+1746979,缺座標,,,,,,

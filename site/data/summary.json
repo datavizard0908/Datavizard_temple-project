@@ -1,0 +1,15 @@
+{
+  "fetched_at_utc": "2026-11-03T10:21:01+00:00",
+  "source_modified": "2026-01-23 10:12:01",
+  "raw_rows": 12427,
+  "clean_rows": 12379,
+  "dropped_rows": 48,
+  "points": 12379,
+  "coord_removed": 0,
+  "coord_approx": 504,
+  "coord_fixed": 2,
+  "values_inferred": 9,
+  "taipei_rows": 1226,
+  "taipei_points": 1226,
+  "taipei_fixed": 0
+}
