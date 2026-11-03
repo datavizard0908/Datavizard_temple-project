@@ -30,3 +30,8 @@ venv/
 
 # Logs
 *.log
+
+# Temple project
+# 原始資料可由 scripts/01_fetch_temples.py 重新下載；temple_raw.csv 含電話、負責人，不發布
+data/raw/
+.claude/

@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>神明住在哪裡？資料預覽</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>
+  :root {
+    color-scheme: dark;
+    --surface-0: #111113;
+    --surface-1: #1b1b1d;
+    --border: #2e2e31;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e88;
+    --series-1: #3987e5; /* 泉州府 */
+    --series-2: #d95926; /* 漳州府 */
+    --series-3: #199e70; /* 粵東・閩西 */
+    --context: #8f8e88;  /* 其他寺廟 */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--surface-0); color: var(--text-primary);
+    font: 14px/1.55 "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif; }
+  #app { display: flex; height: 100%; }
+  #panel { width: 360px; flex: none; overflow-y: auto; padding: 20px 20px 28px; background: var(--surface-1);
+    border-right: 1px solid var(--border); }
+  #map { flex: 1; min-width: 0; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 22px 0 8px; letter-spacing: .04em; }
+  p { margin: 0 0 8px; color: var(--text-secondary); }
+  .note { font-size: 12.5px; color: var(--text-muted); }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 8px; border: 1px solid var(--border);
+    border-radius: 99px; color: var(--text-muted); margin-bottom: 10px; }
+  .legend { list-style: none; padding: 0; margin: 0; }
+  .legend li { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 50%; flex: none; box-shadow: 0 0 0 2px var(--surface-1); }
+  .legend .label { flex: 1; }
+  .legend .sub { display: block; font-size: 12px; color: var(--text-muted); }
+  .legend .count { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .scope { display: flex; gap: 4px; margin: 12px 0 6px; padding: 3px; border: 1px solid var(--border); border-radius: 8px; }
+  .scope label { flex: 1; cursor: pointer; }
+  .scope input { position: absolute; opacity: 0; }
+  .scope span { display: block; text-align: center; padding: 5px 8px; border-radius: 6px; color: var(--text-secondary); }
+  .scope input:checked + span { background: var(--border); color: var(--text-primary); }
+  .scope input:focus-visible + span { outline: 2px solid var(--series-1); }
+  .controls label { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; }
+  .controls input:disabled + span { color: var(--text-muted); }
+  .stats { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin: 0; }
+  .stats dt { color: var(--text-secondary); }
+  .stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: var(--text-secondary); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+  th, td { text-align: left; padding: 4px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text-muted); font-weight: 500; }
+  footer { margin-top: 22px; font-size: 12px; color: var(--text-muted); }
+  footer a { color: var(--text-secondary); }
+  #status { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px;
+    display: flex; gap: 12px; align-items: center; }
+  #status[hidden] { display: none; }
+  #status.error { border-color: #e66767; }
+  #status button { background: none; border: 0; color: var(--text-muted); cursor: pointer; font-size: 16px; }
+  .maplibregl-popup-content { background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px; font: inherit; max-width: 280px; }
+  .maplibregl-popup-tip { border-top-color: var(--surface-1) !important; border-bottom-color: var(--surface-1) !important; }
+  .maplibregl-popup-close-button { color: var(--text-muted); font-size: 18px; padding: 0 6px; }
+  .pop h3 { font-size: 15px; margin: 0 0 6px; }
+  .pop dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0 0 8px; font-size: 12.5px; }
+  .pop dt { color: var(--text-muted); }
+  .pop dd { margin: 0; }
+  .pop .src { font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: 6px; }
+  @media (max-width: 760px) {
+    #app { flex-direction: column-reverse; }
+    #map { flex: 1 1 55%; }
+    #panel { width: 100%; flex: 1 1 45%; border-right: 0; border-top: 1px solid var(--border); padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <span class="badge">資料預覽 · 非正式網站</span>
+    <h1>神明住在哪裡？</h1>
+    <p><span id="scope-name">全台</span>登記寺廟。有顏色的點是「標記神明」，依祂們祖廟所在的府上色；灰點是其他寺廟。</p>
+    <div class="scope" role="radiogroup" aria-label="範圍">
+      <label><input type="radio" name="scope" value="all" checked disabled><span>全台</span></label>
+      <label><input type="radio" name="scope" value="taipei" disabled><span>台北市＋新北市</span></label>
+    </div>
+    <p class="note">祖籍不等於族群或語言：漳州府也有講客語的人，潮州府也有講閩南語的人。顏色只代表地名。</p>
+
+    <h2>原鄉（依府）</h2>
+    <ul class="legend" id="legend"></ul>
+
+    <h2>顯示</h2>
+    <div class="controls">
+      <label><input type="checkbox" id="tgl-ext" checked disabled><span>包含延伸標記神明（霞海城隍、保儀尊王等）</span></label>
+      <label><input type="checkbox" id="tgl-ctx" checked disabled><span>顯示其他寺廟（灰點）</span></label>
+    </div>
+
+    <h2>資料品質</h2>
+    <dl class="stats" id="stats"><dt>載入中…</dt><dd></dd></dl>
+    <p class="note" style="margin-top:8px">只含向內政部登記的寺廟，路邊土地公祠與私壇大多不在其中。</p>
+
+    <details>
+      <summary>標記神明寺廟列表（表格檢視）</summary>
+      <table><thead><tr><th>寺廟</th><th>主神</th><th>原鄉</th></tr></thead><tbody id="tbl"></tbody></table>
+    </details>
+
+    <footer>
+      資料：內政部〈全國宗教資訊系統資料－寺廟〉（data.gov.tw #8203），依政府資料開放授權條款第 1 版釋出；資料時間 <span id="src-time">—</span>。<br>
+      鄉鎮界：國土測繪中心〈鄉鎮市區界線〉（#7441），同授權條款。<br>
+      部分座標補自 © OpenStreetMap 貢獻者（ODbL），已在彈出視窗標示。<br>
+      底圖：OpenFreeMap © OpenMapTiles © OpenStreetMap 貢獻者。
+    </footer>
+  </aside>
+  <div id="map" style="position:relative">
+    <div id="status" role="status"><span id="status-text">載入資料中…</span><button id="status-close" aria-label="關閉" hidden>×</button></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+const GROUPS = [
+  { key: "泉州府", color: "--series-1", places: ["泉州府同安縣", "泉州府安溪縣", "泉州府南安縣", "泉州府惠安縣"] },
+  { key: "漳州府", color: "--series-2", places: ["漳州府"] },
+  { key: "粵東・閩西", color: "--series-3", places: ["潮州府（粵東）", "汀州府", "嘉應州"] },
+];
+const TAIPEI = ["臺北市", "新北市"];
+const BOUNDS = { all: [[119.25, 21.85], [122.05, 25.35]], taipei: [[121.28, 24.85], [121.98, 25.30]] };
+let scope = "all";
+const inScope = f => scope === "all" || TAIPEI.includes(f.properties["縣市"]);
+const scopeExpr = () => scope === "all" ? true : ["in", ["get", "縣市"], ["literal", TAIPEI]];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const groupOf = place => (GROUPS.find(g => g.places.includes(place)) || {}).key || "";
+const SOURCE_LABEL = {
+  "原始資料": "原始資料", "nominatim_name": "OSM 補點（廟名）", "nominatim_addr": "OSM 補點（地址）",
+  "村里中心": "概略位置：地址所在村里的中心點，非實際位置", "鄉鎮中心": "概略位置：地址所在鄉鎮的中心點，非實際位置",
+};
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const statusBox = document.getElementById("status");
+function showStatus(text, isError) {
+  document.getElementById("status-text").textContent = text;
+  statusBox.classList.toggle("error", !!isError);
+  document.getElementById("status-close").hidden = !isError;
+  statusBox.hidden = false;
+}
+document.getElementById("status-close").onclick = () => { statusBox.hidden = true; };
+
+const map = new maplibregl.Map({
+  container: "map",
+  style: "https://tiles.openfreemap.org/styles/dark",
+  bounds: BOUNDS.all, fitBoundsOptions: { padding: 20 },
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+
+Promise.all([
+  fetch("data/temples.geojson").then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+  fetch("data/summary.json").then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+  new Promise(res => map.once("load", res)),
+]).then(([geo, summary]) => {
+  geo.features.forEach(f => { f.properties.group = groupOf(f.properties["原鄉"]); });
+  renderPanel(geo, summary);
+  addLayers(geo);
+  statusBox.hidden = true;
+}).catch(err => {
+  showStatus("資料載入失敗（" + err.message + "）。請用本機 server 開啟此頁，例如在 site/ 執行 python -m http.server。", true);
+});
+
+function addLayers(geo) {
+  map.addSource("temples", { type: "geojson", data: geo });
+  const radius = (base) => ["interpolate", ["linear"], ["zoom"], 9, base * 0.6, 13, base, 16, base * 1.8];
+  // 概略位置（村里／鄉鎮中心）畫成空心圈，與實際座標區分
+  const approx = ["==", ["get", "coord_flag"], "概略位置"];
+  const groupColor = ["match", ["get", "group"], ...GROUPS.flatMap(g => [g.key, css(g.color)]), css("--context")];
+  map.addLayer({ id: "context", type: "circle", source: "temples", filter: contextFilter(),
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 1.6, 10, 2.6, 13, 3.6, 16, 6],
+      "circle-color": css("--context"),
+      "circle-opacity": ["case", approx, 0, 0.8],
+      "circle-stroke-width": ["case", approx, 1, 0], "circle-stroke-color": css("--context"),
+    } });
+  map.addLayer({ id: "markers", type: "circle", source: "temples", filter: markerFilter(),
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2.8, 10, 4.5, 13, 6, 16, 10],
+      "circle-color": groupColor,
+      "circle-opacity": ["case", approx, 0, 1],
+      "circle-stroke-width": ["case", approx, 1.5, 2],
+      "circle-stroke-color": ["case", approx, groupColor, css("--surface-1")],
+    } });
+  for (const id of ["markers", "context"]) {
+    map.on("mouseenter", id, () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", id, () => { map.getCanvas().style.cursor = ""; });
+    map.on("click", id, e => {
+      const f = e.features[0];
+      if (id === "context" && map.queryRenderedFeatures(e.point, { layers: ["markers"] }).length) return;
+      new maplibregl.Popup({ offset: 8 }).setLngLat(f.geometry.coordinates).setHTML(popupHTML(f.properties)).addTo(map);
+    });
+  }
+  const ext = document.getElementById("tgl-ext"), ctx = document.getElementById("tgl-ctx");
+  ext.disabled = ctx.disabled = false;
+  ext.onchange = () => { map.setFilter("markers", markerFilter()); renderLegend(geo); renderTable(geo); };
+  ctx.onchange = () => map.setLayoutProperty("context", "visibility", ctx.checked ? "visible" : "none");
+  document.querySelectorAll('input[name="scope"]').forEach(r => {
+    r.disabled = false;
+    r.onchange = () => {
+      scope = r.value;
+      document.getElementById("scope-name").textContent = scope === "all" ? "全台" : "台北市＋新北市";
+      map.setFilter("markers", markerFilter());
+      map.setFilter("context", contextFilter());
+      map.fitBounds(BOUNDS[scope], { padding: 20 });
+      renderLegend(geo); renderTable(geo);
+    };
+  });
+}
+
+const tiersOn = () => document.getElementById("tgl-ext").checked ? ["核心", "延伸"] : ["核心"];
+function markerFilter() {
+  return ["all", ["!=", ["get", "group"], ""], ["in", ["get", "原鄉層級"], ["literal", tiersOn()]], scopeExpr()];
+}
+function contextFilter() {
+  return ["all", ["==", ["get", "group"], ""], scopeExpr()];
+}
+
+function popupHTML(p) {
+  const tier = p["原鄉層級"];
+  const origin = p["原鄉"] ? `${esc(p["原鄉"])}（${esc(tier)}）` : (tier === "跨族群信仰" ? "跨族群信仰，不列原鄉" : "—");
+  const coord = SOURCE_LABEL[p.coord_source] || p.coord_source;
+  const isApprox = p.coord_flag === "概略位置";
+  const prec = !isApprox && p.coord_precision && p.coord_precision !== "未知" ? `，精度：${esc(p.coord_precision)}` : "";
+  const flag = p.coord_flag && !isApprox ? `，${esc(p.coord_flag)}` : "";
+  return `<div class="pop"><h3>${esc(p["寺廟名稱"])}</h3><dl>
+    <dt>主神</dt><dd>${esc(p["主祀神祇_原始"])}${p["主神"] !== p["主祀神祇_原始"] ? `<br><span class="note">歸併為 ${esc(p["主神"])}</span>` : ""}</dd>
+    ${p["同祀"] ? `<dt>同祀</dt><dd>${esc(p["同祀"])}</dd>` : ""}
+    <dt>原鄉</dt><dd>${origin}</dd>
+    <dt>地址</dt><dd>${esc(p["地址"])}</dd>
+    <dt>座標</dt><dd>${esc(coord)}${prec}${flag}</dd></dl>
+    <div class="src">內政部全國宗教資訊系統（#8203）${String(p.coord_source).startsWith("nominatim") ? "；座標 © OpenStreetMap" : ""}</div></div>`;
+}
+
+function renderLegend(geo) {
+  const tiers = tiersOn();
+  const shown = geo.features.filter(f => inScope(f) && f.properties.group && tiers.includes(f.properties["原鄉層級"]));
+  const ctx = geo.features.filter(f => inScope(f) && !f.properties.group).length;
+  const items = GROUPS.map(g => {
+    const fs = shown.filter(f => f.properties.group === g.key);
+    const byDeity = {};
+    fs.forEach(f => { byDeity[f.properties["主神"]] = (byDeity[f.properties["主神"]] || 0) + 1; });
+    const sub = Object.entries(byDeity).sort((a, b) => b[1] - a[1]).map(([d, n]) => `${d} ${n}`).join("、") || "—";
+    return `<li><span class="swatch" style="background:var(${g.color})"></span>
+      <span class="label">${g.key}<span class="sub">${esc(sub)}</span></span><span class="count">${fs.length}</span></li>`;
+  });
+  items.push(`<li><span class="swatch" style="background:var(--context)"></span>
+    <span class="label">其他寺廟<span class="sub">含媽祖、土地公、觀音等跨族群信仰</span></span><span class="count">${ctx.toLocaleString()}</span></li>`);
+  const approxN = geo.features.filter(f => inScope(f) && f.properties.coord_flag === "概略位置"
+    && (!f.properties.group || tiers.includes(f.properties["原鄉層級"]))).length;
+  items.push(`<li class="approx"><span class="swatch" style="background:transparent;box-shadow:inset 0 0 0 1.5px var(--text-secondary)"></span>
+    <span class="label">空心圈＝概略位置<span class="sub">原始資料缺座標或座標有誤、也查不到，暫放在地址所在的村里或鄉鎮中心</span></span><span class="count">${approxN}</span></li>`);
+  document.getElementById("legend").innerHTML = items.join("");
+}
+
+function renderPanel(geo, s) {
+  renderLegend(geo);
+  const rows = [
+    ["全台原始筆數", s.raw_rows], ["清理後保留", s.clean_rows], ["刪除（主神缺值）", s.dropped_rows],
+    ["由廟名等推定補值", s.values_inferred], ["全台有效點位", s.points], ["OSM 補點", s.coord_fixed],
+    ["概略位置（村里／鄉鎮中心）", s.coord_approx], ["台北市＋新北市", s.taipei_rows], ["　其中有點位", s.taipei_points],
+  ];
+  document.getElementById("stats").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${Number(v).toLocaleString()}</dd>`).join("");
+  document.getElementById("src-time").textContent = `${s.source_modified.slice(0, 10)}（抓取 ${s.fetched_at_utc.slice(0, 10)}）`;
+  renderTable(geo);
+}
+
+function renderTable(geo) {
+  const tiers = tiersOn();
+  const marked = geo.features.filter(f => inScope(f) && f.properties.group && tiers.includes(f.properties["原鄉層級"]))
+    .sort((a, b) => a.properties.group.localeCompare(b.properties.group) || a.properties["主神"].localeCompare(b.properties["主神"]));
+  document.getElementById("tbl").innerHTML = marked.map(f => {
+    const p = f.properties;
+    return `<tr><td>${esc(p["寺廟名稱"])}<br><span class="note">${esc(p["縣市"])}${esc(p["鄉鎮市區"])}</span></td><td>${esc(p["主神"])}</td><td>${esc(p["原鄉"])}<br><span class="note">${esc(p["原鄉層級"])}</span></td></tr>`;
+  }).join("");
+}
+</script>
+</body>
+</html>
