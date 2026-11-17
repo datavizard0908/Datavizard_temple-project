@@ -1,0 +1,2394 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>神明住在哪裡？互動原型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js"></script>
+<style>
+:root{
+  --bg:#F2E4CE; --surface:#FBF2E3; --ink:#2A160E; --muted:#6A4C3A;
+  --red:#9E2018; --red-soft:rgba(158,32,24,.10); --gold:#B07F22; --wood:#5A3420;
+  --land:#E2C9A4; --land-edge:#A88559; --cn-land:#E9DAC2; --river:#3F7896;
+  --line:rgba(90,52,32,.22); --halo:#F3E6D2;
+  --hero-bg:#8C1A12; --hero-ink:#EFC86A;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1B100B; --surface:#271710; --ink:#F2E2C6; --muted:#BFA283;
+    --red:#DE5A47; --red-soft:rgba(222,90,71,.15); --gold:#DDB257; --wood:#C49A6C;
+    --land:#3A2419; --land-edge:#7A5638; --cn-land:#2B1A12; --river:#6FA2BC;
+    --line:rgba(221,178,87,.22); --halo:#2A1A12;
+    --hero-bg:#5A110C; --hero-ink:#E8BE5E;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1B100B; --surface:#271710; --ink:#F2E2C6; --muted:#BFA283;
+  --red:#DE5A47; --red-soft:rgba(222,90,71,.15); --gold:#DDB257; --wood:#C49A6C;
+  --land:#3A2419; --land-edge:#7A5638; --cn-land:#2B1A12; --river:#6FA2BC;
+  --line:rgba(221,178,87,.22); --halo:#2A1A12;
+  --hero-bg:#5A110C; --hero-ink:#E8BE5E;
+  color-scheme:dark;
+}
+:root{
+  --kai:"LXGW WenKai TC","Kaiti TC","BiauKai","DFKai-SB","STKaiti",serif;
+  --sans:"Noto Sans TC","PingFang TC","Microsoft JhengHei","Heiti TC",system-ui,sans-serif;
+  box-sizing:border-box;
+}
+*,*::before,*::after{box-sizing:inherit}
+html.lenis,html.lenis body{height:auto}
+.lenis.lenis-smooth{scroll-behavior:auto!important}
+.lenis.lenis-stopped{overflow:hidden}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.75;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--kai);font-weight:700;line-height:1.3}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+button,input,select{font:inherit;color:inherit}
+.dot{width:.7rem;height:.7rem;border-radius:50%;display:inline-block;flex:none}
+.note{font-size:.88rem;color:var(--muted)}
+
+/* ---------- 章節導覽 ---------- */
+.chnav{position:fixed;right:.7rem;top:50%;transform:translateY(-50%);z-index:60;display:flex;flex-direction:column;padding:.45rem .3rem;
+  background:color-mix(in srgb,var(--surface) 86%,transparent);border:1px solid var(--line);border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.12)}
+.chnav::before{content:"";position:absolute;left:50%;top:1rem;bottom:1rem;width:1px;background:var(--line);transform:translateX(-50%)}
+.chnav a{position:relative;display:grid;place-items:center;width:1.6rem;height:1.85rem;text-decoration:none;color:var(--ink)}
+.cn-dot{position:relative;width:7px;height:7px;border-radius:50%;background:var(--muted);transition:width .3s,height .3s,background .3s,box-shadow .3s}
+.chnav a[aria-current="true"] .cn-dot{width:12px;height:12px;background:var(--red);box-shadow:0 0 0 4px var(--red-soft)}
+.cn-lab{position:absolute;right:calc(100% + .7rem);top:50%;transform:translate(6px,-50%);white-space:nowrap;background:var(--hero-bg);color:#F7E6C8;
+  font-family:var(--kai);font-size:.9rem;padding:.1rem .65rem;border-radius:3px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+.chnav a:hover .cn-lab,.chnav a:focus-visible .cn-lab{opacity:1;transform:translate(0,-50%)}
+.chnav.peek a[aria-current="true"] .cn-lab{opacity:1;transform:translate(0,-50%)}
+
+/* ---------- 3D 故事 ---------- */
+.story{position:relative}
+.stage3d{position:sticky;top:0;height:100vh;height:100svh;overflow:hidden;background:#0E1433}
+.stage3d .grain{position:absolute;inset:0;pointer-events:none;z-index:1;opacity:.32;mix-blend-mode:soft-light;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .3 0 0 0 0 .2 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.deco{position:absolute;inset:0;pointer-events:none;z-index:1;overflow:hidden;color:#B4502E}
+.deco > *{position:absolute;opacity:0;transition:opacity 1s ease,transform 1.2s ease}
+.deco .moon{right:-14vmin;top:-20vmin;width:64vmin;height:64vmin;border-radius:50%;mix-blend-mode:screen;
+  background:radial-gradient(circle at 42% 62%,#F9C760 0%,#F09A3E 40%,#DD6430 66%,rgba(221,100,48,0) 71%);filter:drop-shadow(0 0 40px rgba(247,180,80,.45))}
+.deco .lantern{top:0;width:clamp(72px,9vw,128px);height:auto;transform-origin:50% 0;animation:sway 6s ease-in-out infinite}
+.deco .l1{left:34%;top:-8vh;width:clamp(54px,6vw,86px);animation-delay:-2s}
+.deco .l2{right:30%;top:-4vh}
+@keyframes sway{50%{transform:rotate(2.5deg)}}
+.deco .cloud{width:clamp(130px,16vw,220px);transform:translateY(-12px)}
+.deco .c1{left:-2%;top:7%}
+.deco .c2{right:7%;top:4%;width:clamp(100px,12vw,170px)}
+.deco .c3{right:-3%;top:22%;width:clamp(90px,10vw,140px)}
+.deco .fan{bottom:-1px;width:clamp(150px,18vw,260px);transform:translateY(20px)}
+.deco .f1{left:30%}
+.deco .f2{right:4%;width:clamp(110px,13vw,190px)}
+.stage3d[data-scene="night"] .moon,.stage3d[data-scene="night"] .lantern{opacity:1;transform:none}
+.stage3d[data-scene="night"] .lantern{transform:none}
+.stage3d[data-scene="strait"] .cloud{opacity:.92;transform:none}
+.stage3d[data-scene="basin"] .lantern{opacity:.95}
+.stage3d[data-scene="basin"] .c2{opacity:.8;transform:none}
+.stage3d[data-scene="compare"] .fan{opacity:.95;transform:none}
+.stage3d[data-scene="compare"] .c1{opacity:.8;transform:none}
+.stage3d canvas{display:block;width:100%;height:100%}
+.nogl-msg{display:none}
+.stage3d.nogl .nogl-msg{display:grid;position:absolute;inset:0;place-items:center;color:#F2E2C6;padding:2rem;text-align:center}
+.labels{position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden}
+.lb{position:absolute;left:0;top:0;white-space:nowrap;font-size:13px;font-weight:500;color:#FFF1DA;opacity:0;transition:opacity .5s;
+  text-shadow:0 0 3px #7A2E15,0 0 7px #7A2E15,0 0 12px #7A2E15;will-change:transform}
+.lb.on{opacity:1}
+.lb.on.dim{opacity:.28}
+.stage3d.night .lb{color:#F7E6C8;text-shadow:0 0 4px #0B0F28,0 0 9px #0B0F28}
+.lb.big{font-family:var(--kai);font-size:22px;letter-spacing:.35em;font-weight:700}
+.lb.big{color:#F6E9D3}
+.lb.big.on{opacity:.8}
+.lb.origin{font-family:var(--kai);font-size:16px;font-weight:700}
+.lb.origin small{display:block;font-family:var(--sans);font-size:11px;font-weight:400;opacity:.8;text-align:center}
+.lb.river{color:#CFEAF5;font-style:italic;font-size:12px}
+.stage3d.night .lb.river{color:#8FB8CC}
+.lb.place{font-family:var(--kai);font-size:15px;font-weight:700}
+.lb.route{color:#F6CF6A;font-family:var(--kai);font-size:15px;font-weight:700;text-align:center;line-height:1.3}
+.lb.route small{display:block;font-family:var(--sans);font-size:11px;font-weight:500;color:#FFF1DA}
+.lb.stat{font-family:var(--kai);font-size:15px;text-align:center;line-height:1.25;background:var(--surface);border:1px solid var(--line);border-top:2px solid var(--red);padding:.15rem .55rem;text-shadow:none;color:var(--ink)}
+.stage3d.night .lb.stat{color:var(--ink);text-shadow:none}
+.lb.stat small{display:block;font-family:var(--sans);font-size:11px;color:var(--muted)}
+.legend{position:absolute;left:1rem;bottom:1rem;z-index:3;background:var(--surface);border:1.5px solid #B4502E;padding:.5rem .75rem;font-size:.8rem;line-height:1.55;opacity:0;transition:opacity .4s;pointer-events:none}
+.legend.on{opacity:1}
+.legend div{display:flex;align-items:center;gap:.4rem;transition:opacity .3s}
+.legend div.dim{opacity:.3}
+.map-note{position:absolute;right:3.4rem;bottom:.5rem;margin:0;font-size:.72rem;color:#F6E9D3;opacity:.8;z-index:3}
+.veil{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:#0E1433;color:#EFC86A;font-family:var(--kai);font-size:1.1rem;transition:opacity .8s}
+.veil.done{opacity:0;pointer-events:none}
+
+.bm-layer{position:absolute;inset:0;pointer-events:none;z-index:3;overflow:hidden}
+.bm{position:absolute;left:0;top:0;pointer-events:auto;display:flex;align-items:center;gap:.3rem;border:1.5px solid var(--hero-ink);background:var(--hero-bg);color:#F7E6C8;
+  padding:.12rem .55rem .12rem .2rem;border-radius:3px;cursor:pointer;font-family:var(--kai);font-size:.86rem;line-height:1.2;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,.25);transition:opacity .4s}
+.bm::after{content:"";position:absolute;left:50%;top:100%;width:1.5px;height:9px;background:var(--hero-ink);transform:translateX(-50%)}
+.bm:hover{background:#2A160E}
+.bm-3d{background:var(--hero-ink);color:#2A160E;font-family:var(--sans);font-size:.62rem;font-weight:700;border-radius:2px;padding:0 .22rem}
+.bm.off{opacity:0;pointer-events:none}
+.bm.compact{padding:.12rem .2rem}
+.bm.compact .bm-n{display:none}
+
+.steps{position:relative;z-index:4;margin-top:-100vh;margin-top:-100svh;pointer-events:none}
+.step{min-height:110vh;display:flex;align-items:center;padding:0 clamp(1rem,3vw,2.6rem)}
+.card{position:relative;pointer-events:auto;background:var(--surface);border:2px solid #B4502E;border-radius:6px;
+  padding:1.5rem 1.55rem 1.5rem;max-width:27rem;width:100%;box-shadow:inset 0 0 0 5px var(--surface),inset 0 0 0 6px rgba(180,80,46,.45),0 14px 34px rgba(20,10,30,.28)}
+.card .chapter{display:inline-block;color:#B4502E;letter-spacing:.08em;border-bottom:3px double #B4502E;padding-bottom:1px;margin-bottom:.5rem}
+.card .ico{position:absolute;right:1.1rem;top:-30px;width:60px;height:60px;padding:7px;border-radius:50%;background:var(--surface);border:2px solid #B4502E;color:#B4502E;box-shadow:0 0 0 4px var(--surface)}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .card .ico{color:#E07A52} }
+.card h2{margin:0 0 .5rem;font-size:1.6rem}
+.card p{margin:.45rem 0}
+.chapter{color:var(--red);font-family:var(--kai);font-size:1.02rem;margin:0 0 .15rem}
+.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.8rem 0 .3rem}
+.chip{display:inline-flex;align-items:center;gap:.35rem;border:1px solid var(--line);background:transparent;border-radius:999px;padding:.2rem .75rem;font-size:.88rem;cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--red);background:var(--red-soft)}
+.year{font-family:var(--kai);font-size:2.8rem;color:var(--red);line-height:1;margin:.7rem 0 .3rem}
+input[type=range]{width:100%;accent-color:var(--red)}
+.row{display:flex;align-items:center;gap:.8rem}
+.btn{border:1px solid var(--red);color:var(--red);background:transparent;border-radius:4px;padding:.25rem .9rem;cursor:pointer;font-size:.9rem;white-space:nowrap}
+.btn:hover{background:var(--red-soft)}
+.btn.solid{background:var(--red);color:#fff}
+.btn.solid:hover{background:var(--wood);border-color:var(--wood)}
+select{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:.3rem .5rem}
+.result{margin-top:.8rem;border-top:1px dashed var(--line);padding-top:.6rem}
+.result p{font-size:.95rem}
+dl.facts{display:grid;grid-template-columns:auto 1fr;gap:.25rem .9rem;margin:.5rem 0;font-size:.93rem}
+dl.facts dt{color:var(--muted)}
+dl.facts dd{margin:0}
+.bigstat{font-family:var(--kai);font-size:clamp(3.2rem,7vw,4.4rem);color:var(--red);line-height:1;margin:.5rem 0}
+.share{list-style:none;padding:0;margin:.6rem 0 0;font-size:.92rem}
+.share li{display:grid;grid-template-columns:2.6rem 1fr;gap:.5rem;padding:.3rem 0;border-bottom:1px dashed var(--line)}
+.share b{font-family:var(--kai)}
+.keys{display:flex;flex-wrap:wrap;gap:.3rem 1rem;font-size:.82rem;color:var(--muted);margin-top:.5rem}
+.keys span{display:inline-flex;align-items:center;gap:.35rem}
+
+/* 開場 */
+.step.hero-step{min-height:100vh;min-height:100svh}
+.hero{pointer-events:auto;display:grid;grid-template-columns:auto minmax(0,25rem);gap:clamp(1.6rem,4vw,3.4rem);align-items:center;color:#F7E6C8;padding-left:clamp(0rem,4vw,4rem)}
+.plaque{writing-mode:vertical-rl;margin:0;font-size:clamp(2.4rem,min(6vw,7.5vh),4.6rem);color:#B4502E;letter-spacing:.18em;padding:.7em .35em;border:3px solid #B4502E;border-radius:999px;
+  box-shadow:0 0 0 6px #F6E9D3,0 0 0 8px #B4502E,0 18px 40px rgba(0,0,0,.35);background:#F6E9D3;line-height:1.15}
+.hero .lead{font-family:var(--kai);font-size:clamp(1.3rem,2.4vw,1.7rem);line-height:1.65;margin:0 0 1rem;text-shadow:0 0 12px #0B0F28}
+.hero .en{color:#EFC86A;font-size:.95rem;letter-spacing:.03em;margin:0 0 1.2rem}
+.badge{display:inline-block;border:1px solid currentColor;border-radius:999px;padding:.05rem .75rem;font-size:.82rem}
+.cue{margin-top:2.2rem;font-size:.92rem;opacity:.9}
+.cue span{display:inline-block;animation:bob 2s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(5px)}}
+
+@media (max-width:760px){
+  .chnav{right:.35rem;padding:.35rem .15rem}
+  .chnav a{width:1.3rem;height:1.6rem}
+  .step{min-height:100vh;min-height:100svh;align-items:flex-end;padding:0 .8rem 5svh}
+  .card{max-width:none;font-size:15.5px;padding:1rem 1.1rem;margin-right:1.6rem}
+  .card h2{font-size:1.35rem}
+  .hero{grid-template-columns:1fr;justify-items:center;text-align:center;gap:1.6rem;padding:0 1.6rem 0 0}
+  .step.hero-step{align-items:center}
+  .legend{top:.6rem;bottom:auto;left:.6rem;font-size:.7rem;display:grid;grid-template-columns:1fr 1fr;column-gap:.6rem;padding:.35rem .55rem}
+  .map-note{display:none}
+  .lb{font-size:11px}
+  .lb.big{font-size:16px}
+  .lb.origin{font-size:13px}
+}
+
+/* ---------- 第五章：自由探索（3D） ---------- */
+.step.explore-step{min-height:100vh;min-height:100svh;padding:0}
+.xplore{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .7s,visibility 0s .7s}
+.stage3d[data-scene="explore"] .xplore{opacity:1;visibility:visible;transition:opacity .7s}
+.xplore > *{pointer-events:auto}
+.xplore .e-head{pointer-events:none}
+.xplore .e-head .e-back{pointer-events:auto}
+.xplore .e-head{color:#F6E9D3;text-shadow:0 0 4px #7A2E15,0 0 10px #7A2E15}
+.xplore .e-head .chapter{color:#F6E9D3;border-bottom:3px double #F6E9D3;display:inline-block}
+.xplore .e-title span{color:#F6CF6A}
+.xplore .e-sub{color:#F6E9D3;opacity:.9}
+.stage3d .e-back{border-color:#F6E9D3;color:#B4502E;background:#F6E9D3}
+.xplore .e-panel,.xplore .info,.xplore .story-card{border:2px solid #B4502E;border-radius:6px;box-shadow:inset 0 0 0 4px var(--surface),inset 0 0 0 5px rgba(180,80,46,.4),0 12px 30px rgba(20,10,30,.3)}
+.xplore .e-panel{background:var(--surface)}
+.xplore .timeline{background:color-mix(in srgb,var(--surface) 94%,transparent);border-top:2px solid #B4502E}
+.xplore .zoombtns button{border-color:#B4502E;color:#B4502E}
+.xplore .tips{position:absolute;left:clamp(1rem,3vw,2.2rem);bottom:8.4rem;margin:0;font-size:.78rem;color:#F6E9D3;opacity:.85;pointer-events:none;max-width:22rem}
+.stage3d[data-scene="explore"] .legend,.stage3d[data-scene="explore"] .map-note{opacity:0}
+@media (max-width:760px){ .xplore .tips{display:none} }
+
+.explore{position:relative;height:100vh;height:100svh;min-height:34rem;overflow:hidden;border-top:1px solid var(--line);background:var(--bg)}
+.emap{position:absolute;inset:0}
+.emap svg,.emap canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.emap .overlay{pointer-events:none}
+.tw-land{fill:var(--land);stroke:var(--land-edge);stroke-width:1;vector-effect:non-scaling-stroke}
+.river{fill:none;stroke:var(--river);stroke-width:1.4;vector-effect:non-scaling-stroke;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.e-head{position:absolute;left:clamp(1rem,3vw,2.2rem);top:1.4rem;z-index:3;max-width:27rem;text-shadow:0 0 6px var(--bg),0 0 14px var(--bg),0 0 22px var(--bg)}
+.e-head .chapter,.e-head h2,.e-head .e-sub{pointer-events:none}
+.e-title{font-size:clamp(1.7rem,3.4vw,2.7rem);margin:.15rem 0 .35rem;line-height:1.25}
+.e-title span{color:var(--red)}
+.e-sub{margin:0;color:var(--muted);font-size:.95rem}
+.e-back{margin-top:.7rem;text-shadow:none;background:var(--surface)}
+.story-card{position:absolute;left:clamp(1rem,3vw,2.2rem);top:15rem;z-index:4;width:min(22rem,calc(100% - 2rem));background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--gold);padding:.8rem 2rem .9rem 1rem;box-shadow:0 8px 24px rgba(0,0,0,.15)}
+.story-card .s-year{font-family:var(--kai);color:var(--gold);font-size:1.6rem;line-height:1;margin:0 0 .25rem}
+.story-card h3{margin:0 0 .3rem;font-size:1.25rem}
+.story-card p{margin:0;font-size:.93rem}
+.story-card .close,.info .close{position:absolute;right:.5rem;top:.3rem;border:0;background:none;font-size:1.4rem;cursor:pointer;color:var(--muted);line-height:1}
+.e-panel{position:absolute;right:3.6rem;top:1rem;z-index:4;width:17.5rem;max-height:calc(100% - 9.8rem);overflow:auto;background:color-mix(in srgb,var(--surface) 95%,transparent);border:1px solid var(--line);padding:.9rem 1rem 1rem;font-size:.9rem}
+.e-panel h3{font-size:1rem;margin:1rem 0 .4rem;font-family:var(--sans);font-weight:700}
+.e-panel h3:first-child{margin-top:0}
+.e-panel input[type=search]{width:100%;padding:.4rem .6rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)}
+.e-panel select{width:100%}
+.results{list-style:none;margin:.3rem 0 0;padding:0}
+.results button{width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:.35rem .2rem;cursor:pointer;font-size:.88rem;line-height:1.4}
+.results button:hover{background:var(--red-soft)}
+.results small{color:var(--muted)}
+.filter-actions{display:flex;gap:.5rem;margin-top:1rem}
+.about{margin-top:1rem;font-size:.82rem;color:var(--muted)}
+.about summary{cursor:pointer;color:var(--ink)}
+.about p{margin:.4rem 0}
+.about code{font-size:.78rem}
+.zoombtns{position:absolute;right:22rem;bottom:8.8rem;display:flex;flex-direction:column;gap:.3rem;z-index:3}
+.zoombtns button{min-width:2.3rem;height:2.3rem;border:1px solid var(--line);background:var(--surface);border-radius:4px;cursor:pointer;font-size:.95rem;padding:0 .4rem}
+.wheel-hint{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);z-index:5;background:rgba(42,22,14,.85);color:#F7E6C8;padding:.5rem 1rem;border-radius:4px;font-size:.92rem;opacity:0;transition:opacity .3s;pointer-events:none}
+.wheel-hint.on{opacity:1}
+.timeline{position:absolute;left:0;right:0;bottom:0;z-index:5;height:7.6rem;display:flex;align-items:center;gap:.9rem;padding:.5rem 3.6rem .5rem clamp(.8rem,2vw,1.6rem);background:color-mix(in srgb,var(--surface) 94%,transparent);border-top:1px solid var(--line)}
+.timeline svg{flex:1;height:100%;min-width:0;cursor:pointer;touch-action:none;display:block}
+.tl-ax,.tl-lab{fill:var(--muted);font-size:11px}
+.bar{fill:var(--muted);opacity:.3}
+.bar.on{fill:var(--red);opacity:.9}
+.tl-mark{stroke:var(--ink);stroke-width:1.5}
+.sdot{cursor:pointer}
+.sdot .v{fill:var(--gold);stroke:var(--surface);stroke-width:2}
+.sdot .hit{fill:transparent}
+.info{position:absolute;left:clamp(1rem,3vw,2.2rem);bottom:8.6rem;z-index:6;width:min(21rem,calc(100% - 2rem));background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--red);padding:.9rem 1.1rem;display:none;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.info.on{display:block}
+.info h3{margin:0 0 .2rem;font-size:1.35rem;padding-right:1.5rem}
+.only-mobile{display:none}
+@media (max-width:760px){
+  .e-head{top:.8rem;left:.9rem;right:2.4rem}
+  .e-title{font-size:1.45rem}
+  .e-sub{font-size:.82rem}
+  .story-card{top:auto;bottom:9.6rem;left:.8rem;right:2.4rem;width:auto}
+  .zoombtns{display:none}
+  .only-mobile{display:inline-block}
+  .e-panel{left:0;right:0;top:auto;bottom:0;width:auto;max-height:78%;z-index:8;border-left:0;border-right:0;border-top:3px solid var(--red);background:var(--surface);transform:translateY(105%);transition:transform .3s;box-shadow:0 -8px 24px rgba(0,0,0,.2)}
+  .e-panel.open{transform:none}
+  .filter-toggle{position:absolute;right:2.6rem;bottom:7rem;z-index:6;background:var(--surface)}
+  .timeline{height:6.2rem;gap:.5rem;padding-right:2.4rem}
+  .info{left:0;right:0;bottom:0;width:auto;border-left:0;border-right:0;z-index:9}
+}
+
+/* ---------- 3D 大廟視窗 ---------- */
+.x-root{position:fixed;inset:0;z-index:100;background:var(--bg);color:var(--ink);overflow:hidden;--lead:var(--wood);--sea:var(--bg)}
+.x-root[hidden]{display:none}
+.x-stage{position:absolute;inset:0}
+.x-stage canvas{display:block;width:100%;height:100%}
+.x-leaders{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.x-leaders line{stroke:var(--lead);stroke-width:1.2}
+.x-leaders circle{fill:var(--hero-ink);stroke:var(--hero-bg);stroke-width:1.5}
+.x-hs-layer{position:absolute;inset:0;pointer-events:none}
+.x-hs{position:absolute;left:0;top:0;pointer-events:auto;display:flex;align-items:center;gap:.45rem;border:0;cursor:pointer;background:var(--hero-bg);color:#F7E6C8;
+  padding:.3rem 1.1rem .3rem .32rem;white-space:nowrap;line-height:1.15;text-align:left;clip-path:polygon(0 0,100% 0,calc(100% - 9px) 100%,0 100%)}
+.x-hs:hover,.x-hs[aria-pressed="true"]{background:#2A160E}
+.x-hs .n{width:1.35rem;height:1.35rem;border-radius:50%;background:var(--hero-ink);color:#2A160E;display:grid;place-items:center;font-size:.72rem;font-weight:700;flex:none}
+.x-hs b{display:block;font-size:.84rem;font-family:var(--kai)}
+.x-hs small{display:block;font-size:.64rem;opacity:.75}
+.x-bar{position:absolute;top:0;left:0;right:0;z-index:6;display:flex;align-items:center;gap:.6rem 1rem;padding:.8rem clamp(1rem,2.5vw,2rem);pointer-events:none}
+.x-bar > *{pointer-events:auto}
+.x-close{border:2px solid var(--hero-ink);background:var(--hero-bg);color:var(--hero-ink);font-family:var(--kai);font-size:1rem;padding:.1rem .8rem;cursor:pointer;flex:none}
+.x-chips{display:flex;gap:.35rem;margin-left:auto;overflow-x:auto;scrollbar-width:none;max-width:70%}
+.x-chips::-webkit-scrollbar{display:none}
+.x-chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:.2rem .8rem;cursor:pointer;font-size:.84rem}
+.x-chip[aria-pressed="true"]{border-color:var(--red);background:var(--red);color:#fff}
+.x-hint{position:absolute;right:clamp(1rem,2.5vw,2rem);bottom:1.1rem;margin:0;z-index:3;font-size:.76rem;color:var(--muted);text-align:right;max-width:16rem}
+.x-badge{position:absolute;right:clamp(1rem,2.5vw,2rem);top:3.9rem;margin:0;z-index:3;font-size:.78rem;background:var(--surface);border:1px solid var(--gold);color:var(--ink);padding:.15rem .6rem;max-width:20rem}
+.x-badge b{color:var(--gold)}
+.x-dossier{position:absolute;left:clamp(1rem,2.5vw,2rem);top:4rem;bottom:1.2rem;z-index:4;width:23rem;overflow:auto;background:color-mix(in srgb,var(--surface) 95%,transparent);
+  border:1px solid var(--line);border-top:3px solid var(--red);padding:1.1rem 1.25rem 1.3rem;transition:opacity .4s,transform .5s}
+.x-dossier.away{opacity:0;transform:translateX(-1.5rem);pointer-events:none}
+.x-dossier h2{margin:0;font-size:2.05rem;color:var(--red)}
+.x-dossier .x-en{margin:.1rem 0 .9rem;font-size:.84rem;color:var(--muted)}
+.x-yearline{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
+.x-year{font-family:var(--kai);font-size:3rem;line-height:1;color:var(--gold)}
+.x-yearline span:last-child{font-size:.9rem;color:var(--muted)}
+.x-dossier h3{font-family:var(--sans);font-size:.95rem;margin:1.1rem 0 .4rem;padding-top:.9rem;border-top:1px dashed var(--line)}
+.x-deity{display:flex;align-items:center;gap:.5rem;font-family:var(--kai);font-size:1.35rem}
+.x-deity small{font-family:var(--sans);font-size:.8rem;color:var(--muted)}
+.x-tags{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.45rem;align-items:center}
+.x-tag{font-size:.82rem;border:1px solid var(--gold);color:var(--gold);border-radius:3px;padding:0 .5rem}
+.x-mini{width:100%;height:auto;display:block;background:var(--sea);border:1px solid var(--line)}
+.x-mini .tw{fill:var(--land);stroke:var(--land-edge);stroke-width:.8}
+.x-mini .cn{fill:var(--cn-land);stroke:var(--land-edge);stroke-width:.8}
+.x-mini .arc{fill:none;stroke:var(--red);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:xdraw 1.6s .2s cubic-bezier(.6,0,.2,1) forwards}
+.x-mini .o{fill:var(--surface);stroke:var(--red);stroke-width:2}
+.x-mini .d{fill:var(--red)}
+.x-mini text{font-size:12px;fill:var(--ink);paint-order:stroke;stroke:var(--sea);stroke-width:3px;stroke-linejoin:round;font-weight:500}
+@keyframes xdraw{to{stroke-dashoffset:0}}
+.x-route{margin:.35rem 0 0;font-size:.88rem;color:var(--muted)}
+.x-story{margin:0;font-size:.95rem}
+.x-tl{list-style:none;margin:0 0 0 .3rem;padding:0;border-left:2px solid var(--red)}
+.x-tl li{position:relative;padding:0 0 .55rem 1rem;font-size:.9rem;line-height:1.5}
+.x-tl li::before{content:"";position:absolute;left:-.42rem;top:.35rem;width:.6rem;height:.6rem;border-radius:50%;background:var(--surface);border:2px solid var(--red)}
+.x-tl b{font-family:var(--kai);color:var(--red);margin-right:.4rem;font-size:1.02rem}
+.x-fine{font-size:.78rem;color:var(--muted);margin:1rem 0 0}
+.x-detail{position:absolute;top:0;right:0;bottom:0;z-index:7;width:min(31rem,44vw);color:#F7E6C8;padding:5.5rem 2.4rem 2.4rem 4.2rem;display:flex;flex-direction:column;justify-content:center;
+  background:linear-gradient(90deg,rgba(60,12,8,0) 0%,rgba(60,12,8,.88) 20%,rgba(42,10,7,.97) 100%);transform:translateX(102%);transition:transform .7s cubic-bezier(.2,.7,.2,1)}
+.x-detail.on{transform:none}
+.x-detail .x-num{margin:0;font-size:clamp(4.5rem,9vw,7.5rem);font-weight:700;line-height:.9;color:transparent;-webkit-text-stroke:1.3px #EFC86A}
+.x-detail h2{font-size:2.3rem;margin:.6rem 0 0;color:#EFC86A}
+.x-detail .x-den{margin:.1rem 0 1rem;font-size:.9rem;opacity:.7}
+.x-detail .x-txt{margin:0;max-width:24rem}
+.x-detail .x-facts{display:grid;grid-template-columns:auto 1fr;gap:.2rem 1rem;margin:1.2rem 0 0;padding-top:1rem;border-top:1px solid rgba(239,200,106,.3);font-size:.9rem;max-width:24rem}
+.x-detail .x-facts dt{opacity:.65}
+.x-detail .x-facts dd{margin:0}
+.x-dnav{display:flex;gap:.6rem;margin-top:1.8rem;flex-wrap:wrap}
+.x-dnav button{border:1px solid rgba(239,200,106,.7);background:transparent;color:#F7E6C8;padding:.4rem 1rem;cursor:pointer;font-size:.9rem}
+.x-dnav button:hover{background:rgba(239,200,106,.15)}
+.x-dnav .x-next{background:#EFC86A;color:#2A160E;border-color:#EFC86A}
+.x-curtain{position:absolute;inset:0;z-index:30;background:#8C1A12;display:grid;place-items:center;transition:transform 1.1s cubic-bezier(.75,0,.2,1)}
+.x-curtain.up{transform:translateY(-118%)}
+.x-curtain .x-wave{position:absolute;left:0;top:calc(100% - 1px);width:100%;height:12vh}
+.x-curtain .x-wave path{fill:#8C1A12}
+.x-plaque{writing-mode:vertical-rl;margin:0;font-family:var(--kai);font-weight:700;font-size:clamp(2rem,5vw,3rem);color:#EFC86A;letter-spacing:.18em;padding:.6em .3em;border:3px solid #EFC86A;box-shadow:0 0 0 6px #8C1A12,0 0 0 7px #EFC86A;background:rgba(0,0,0,.18)}
+@media (max-width:820px){
+  .x-root{overflow:auto}
+  .x-stage{position:relative;height:62svh}
+  .x-chips{max-width:none}
+  .x-hs{padding:.25rem .8rem .25rem .25rem}
+  .x-hs small{display:none}
+  .x-hint{display:none}
+  .x-badge{top:auto;bottom:.6rem;left:.8rem;right:auto;font-size:.72rem}
+  .x-dossier{position:static;width:auto;border-left:0;border-right:0;background:var(--surface)}
+  .x-dossier.away{opacity:1;transform:none;pointer-events:auto}
+  .x-detail{position:fixed;top:auto;left:0;width:auto;max-height:62%;padding:1.4rem 1.3rem 1.4rem;background:rgba(42,10,7,.97);transform:translateY(102%);overflow:auto}
+  .x-detail .x-num{font-size:3.4rem}
+  .x-detail h2{font-size:1.8rem}
+}
+@media (prefers-reduced-motion: reduce){
+  .deco .lantern{animation:none}
+  .x-detail,.x-curtain,.x-dossier,.veil,.lb,.bm{transition:none}
+  .x-mini .arc{animation:none;stroke-dashoffset:0}
+  .cue span{animation:none}
+}
+
+/* ---------- 雙語 ---------- */
+html[data-lang="en"] [data-l="zh"],html:not([data-lang="en"]) [data-l="en"]{display:none!important}
+.langsw{position:fixed;top:.7rem;right:.7rem;z-index:130;display:flex;border:1px solid var(--line);border-radius:999px;background:color-mix(in srgb,var(--surface) 92%,transparent);padding:2px;box-shadow:0 4px 14px rgba(0,0,0,.14)}
+.langsw button{border:0;background:transparent;border-radius:999px;padding:.12rem .75rem;font-size:.82rem;cursor:pointer;color:var(--ink);line-height:1.6}
+.langsw button[aria-pressed="true"]{background:var(--red);color:#fff}
+.hero .title-en{font-family:var(--kai);font-weight:700;font-size:clamp(2rem,4vw,3rem);line-height:1.15;color:#F6E9D3;margin:0 0 .8rem;text-shadow:0 0 14px #0B0F28}
+html[data-lang="en"] .hero .lead{font-family:var(--sans);font-size:clamp(1.05rem,1.7vw,1.3rem)}
+html[data-lang="en"] .lb.big{letter-spacing:.12em}
+html[data-lang="en"] .bigstat{font-family:var(--sans);font-weight:700}
+.x-bar{padding-right:7.5rem}
+@media (min-width:761px){ .e-panel{top:3.6rem;max-height:calc(100% - 12.4rem)} }
+@media (max-width:760px){ .langsw{top:.5rem;right:.5rem} .e-head{right:6.2rem} .x-bar{padding-right:6.5rem} }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-lantern" viewBox="0 0 64 64">
+    <rect x="26" y="9" width="12" height="4" fill="#2F4FA8"/>
+    <path d="M14 15H50L57 20.5L50 26H14L7 20.5Z" fill="#F2C55C" stroke="currentColor" stroke-width="1.8"/>
+    <path d="M14 27H50L57 32.5L50 38H14L7 32.5Z" fill="#FBEBC8" stroke="currentColor" stroke-width="1.8"/>
+    <path d="M16 39H48L54 43.5L48 48H16L10 43.5Z" fill="#F2C55C" stroke="currentColor" stroke-width="1.8"/>
+    <rect x="27" y="49" width="10" height="4" fill="#2F4FA8"/>
+    <path d="M32 53V58M29 57.5H35M32 58V63" stroke="#C9A04C" stroke-width="1.6"/>
+  </symbol>
+  <symbol id="i-boat" viewBox="0 0 64 64">
+    <path d="M6 41Q32 49 58 39L54 47Q32 56 10 49Z" fill="#F6E9D3" stroke="currentColor" stroke-width="2"/>
+    <path d="M31 9V42M20 19V42" stroke="currentColor" stroke-width="2"/>
+    <path d="M32 11Q47 19 45 37H32Z" fill="currentColor"/>
+    <path d="M33 18L45 20M33 25L46 26.5M33 31L46 32" stroke="#F6E9D3" stroke-width="1.4"/>
+    <path d="M21 21Q11 28 12 38H21Z" fill="currentColor"/>
+    <path d="M4 57q5-4 10 0t10 0t10 0t10 0t10 0t10 0" fill="none" stroke="#2F4FA8" stroke-width="2"/>
+  </symbol>
+  <symbol id="i-temple" viewBox="0 0 64 64">
+    <path d="M12 16Q22 12.5 32 12.5Q42 12.5 52 16M12 16L8 10.5M52 16L56 10.5" fill="none" stroke="currentColor" stroke-width="2"/>
+    <circle cx="32" cy="9.5" r="2.6" fill="#F2C55C" stroke="currentColor" stroke-width="1.2"/>
+    <path d="M4 26Q16 21.5 32 21.5Q48 21.5 60 26L55 17.5Q45 16 32 16Q19 16 9 17.5Z" fill="currentColor"/>
+    <path d="M12 21.5L52 21.5" stroke="#F6E9D3" stroke-width="1"/>
+    <rect x="14" y="26" width="36" height="28" fill="#F6E9D3" stroke="currentColor" stroke-width="2"/>
+    <rect x="16.5" y="29" width="4" height="21" fill="currentColor"/><rect x="43.5" y="29" width="4" height="21" fill="currentColor"/>
+    <rect x="27" y="28.5" width="10" height="4" fill="#2F4FA8"/>
+    <rect x="26" y="36" width="12" height="18" fill="#1E2A5A"/>
+    <rect x="9" y="54" width="46" height="4" fill="#F6E9D3" stroke="currentColor" stroke-width="1.6"/>
+  </symbol>
+  <symbol id="i-qian" viewBox="0 0 64 64">
+    <path d="M26 25L21 7M30 25L28.5 4.5M34 25L35.5 5.5M38 25L43 8.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M21 7L20 4M43 8.5L45 5.5" stroke="#2F4FA8" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M19 25H45L47 59H17Z" fill="#F6E9D3" stroke="currentColor" stroke-width="2"/>
+    <path d="M18.6 31H45.4M17.6 53H46.4" stroke="#2F4FA8" stroke-width="2"/>
+    <text x="32" y="47" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor" font-family="serif">籤</text>
+  </symbol>
+  <symbol id="i-fan" viewBox="0 0 64 64">
+    <path d="M5 52A27 27 0 0 1 59 52Z" fill="#F6E9D3" stroke="currentColor" stroke-width="2"/>
+    <path d="M24.5 49.3L7.6 43.1M25.9 46.9L12.1 35.3M28.0 45.1L19.0 29.5M30.6 44.1L27.5 26.4M33.4 44.1L36.5 26.4M36.0 45.1L45.0 29.5M38.1 46.9L51.9 35.3M39.5 49.3L56.4 43.1" stroke="currentColor" stroke-width="3.2"/>
+    <path d="M14 52A18 18 0 0 1 50 52" fill="none" stroke="#2F4FA8" stroke-width="1.6"/>
+    <circle cx="32" cy="52" r="6.5" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-cloud" viewBox="0 0 120 54">
+    <path d="M14 44C3 44 4 31 15 31C14 21 27 17 34 24C38 12 56 10 62 21C70 13 86 17 86 29C98 26 108 34 102 44Z" fill="#F6E9D3" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/>
+    <path d="M40 38C40 30 52 29 52 35C52 39 46 39 46 36M70 37C70 30 81 30 81 35.5C81 39 76 39 76 36.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+  </symbol>
+</svg>
+<div class="langsw" id="langsw" role="group" aria-label="語言 Language">
+  <button type="button" data-set="zh" aria-pressed="true">中文</button>
+  <button type="button" data-set="en" aria-pressed="false">EN</button>
+</div>
+
+<nav class="chnav" id="chnav" aria-label="章節導覽 Chapters">
+  <a href="#story" data-go="hero"><span class="cn-dot"></span><span class="cn-lab"><span data-l="zh">開場</span><span data-l="en">Opening</span></span></a>
+  <a href="#story" data-go="s3"><span class="cn-dot"></span><span class="cn-lab"><span data-l="zh">一　神明的故鄉</span><span data-l="en">1　Where the gods came from</span></span></a>
+  <a href="#story" data-go="s8"><span class="cn-dot"></span><span class="cn-lab"><span data-l="zh">二　城市與時間</span><span data-l="en">2　The city through time</span></span></a>
+  <a href="#story" data-go="s10"><span class="cn-dot"></span><span class="cn-lab"><span data-l="zh">三　你家附近</span><span data-l="en">3　Near you</span></span></a>
+  <a href="#story" data-go="s11"><span class="cn-dot"></span><span class="cn-lab"><span data-l="zh">四　意外的比較</span><span data-l="en">4　Surprising comparisons</span></span></a>
+  <a href="#explore" data-go="explore"><span class="cn-dot"></span><span class="cn-lab"><span data-l="zh">五　自由探索</span><span data-l="en">5　Explore</span></span></a>
+</nav>
+
+<section class="story" id="story">
+  <div class="stage3d night" id="stage3d">
+    <canvas id="gl" role="img" aria-label="台灣廟宇分布的立體地圖 3D map of Taiwan's temples"></canvas>
+    <div class="deco" aria-hidden="true">
+      <div class="moon"></div>
+      <svg class="lantern l1" viewBox="0 0 64 200"><line x1="32" y1="0" x2="32" y2="140" stroke="#C9A04C" stroke-width="1.2"/><use href="#i-lantern" x="0" y="136" width="64" height="64" color="#B4502E"/></svg>
+      <svg class="lantern l2" viewBox="0 0 64 200"><line x1="32" y1="0" x2="32" y2="140" stroke="#C9A04C" stroke-width="1.2"/><use href="#i-lantern" x="0" y="136" width="64" height="64" color="#B4502E"/></svg>
+      <svg class="cloud c1" viewBox="0 0 120 54"><use href="#i-cloud" width="120" height="54"/></svg>
+      <svg class="cloud c2" viewBox="0 0 120 54"><use href="#i-cloud" width="120" height="54"/></svg>
+      <svg class="cloud c3" viewBox="0 0 120 54"><use href="#i-cloud" width="120" height="54"/></svg>
+      <svg class="fan f1" viewBox="0 0 64 64"><use href="#i-fan" width="64" height="64"/></svg>
+      <svg class="fan f2" viewBox="0 0 64 64"><use href="#i-fan" width="64" height="64"/></svg>
+    </div>
+    <div class="grain" aria-hidden="true"></div>
+    <div class="labels" id="labels"></div>
+    <div class="bm-layer" id="bmStory"></div>
+    <div class="legend" id="legend"></div>
+    <p class="map-note"><span data-l="zh">示範資料，地形與海岸線為示意</span><span data-l="en">Demo data; terrain and coastline are approximate</span></p>
+    <div class="nogl-msg"><span data-l="zh">這個瀏覽器無法顯示 3D 畫面，文字內容仍可往下閱讀。</span><span data-l="en">This browser can’t show the 3D view, but you can still read the story below.</span></div>
+    <div class="xplore" id="xplore">
+  <div class="e-head">
+    <p class="chapter"><span data-l="zh">第五章：自由探索</span><span data-l="en">Chapter 5: Explore</span></p>
+    <h2 class="e-title" id="eTitle"></h2>
+    <p class="e-sub" id="eSub"></p>
+    <button type="button" class="btn e-back" id="eBack"><span data-l="zh">↑ 回到故事開頭</span><span data-l="en">↑ Back to the start</span></button>
+  </div>
+  <div class="story-card" id="storyCard" hidden></div>
+  <div class="zoombtns">
+    <button type="button" id="zin" aria-label="放大 Zoom in">＋</button>
+    <button type="button" id="zout" aria-label="縮小 Zoom out">－</button>
+    <button type="button" id="zall"><span data-l="zh">全台</span><span data-l="en">All</span></button>
+  </div>
+  <p class="wheel-hint" id="wheelHint"><span data-l="zh">按住 Ctrl（Mac 為 ⌘）再滾動可縮放地圖</span><span data-l="en">Hold Ctrl (⌘ on Mac) and scroll to zoom the map</span></p>
+  <aside class="e-panel" id="filters" aria-label="篩選與搜尋 Filter and search" data-lenis-prevent>
+    <h3><span data-l="zh">搜尋廟名</span><span data-l="en">Search temples</span></h3>
+    <input type="search" id="q" placeholder="例如：福安宮" autocomplete="off">
+    <ul class="results" id="results"></ul>
+    <h3><span data-l="zh">走進 3D 大廟</span><span data-l="en">Enter a 3D landmark temple</span></h3>
+    <div class="chips" id="bmList"></div>
+    <h3><span data-l="zh">主祀神明</span><span data-l="en">Main deity</span></h3>
+    <div class="chips" id="chipsE" role="group" aria-label="篩選神明 Filter by god"></div>
+    <h3><span data-l="zh">縣市</span><span data-l="en">County or city</span></h3>
+    <select id="countyE"></select>
+    <div class="filter-actions">
+      <button class="btn" id="resetE" type="button"><span data-l="zh">全部重設</span><span data-l="en">Reset all</span></button>
+      <button class="btn only-mobile" id="doneE" type="button"><span data-l="zh">看地圖</span><span data-l="en">Show map</span></button>
+    </div>
+    <details class="about">
+      <summary><span data-l="zh">關於資料</span><span data-l="en">About the data</span></summary>
+      <p data-l="zh">這是給資料組對接用的原型。廟名、位置、年份與比較數字都是示範用假資料；神明的原鄉與族群、時間軸上的歷史事件採一般常見說法，正式版以資料組整理的資料為準。</p>
+      <p data-l="en">This prototype is for handing off to the data team. Temple names, locations, years and comparison figures are demo data. Deities’ homelands and communities, and the historical events on the timeline, follow commonly cited accounts; the final version will use the data team’s research.</p>
+      <p><span data-l="zh">預計欄位：</span><span data-l="en">Planned fields: </span><code>temples.csv</code>（temple_id、name、deity_id、lng、lat、county、district、founded_year、year_estimated、address、source）<span data-l="zh">與</span><span data-l="en">and</span> <code>deities.csv</code>（deity_id、name、aliases、origin_place、origin_lng、origin_lat、group、desc）。</p>
+    </details>
+  </aside>
+  <button class="btn filter-toggle only-mobile" id="openF" type="button"><span data-l="zh">篩選與搜尋</span><span data-l="en">Filter and search</span></button>
+  <div class="timeline">
+    <button class="btn" id="playE" type="button">播放</button>
+    <svg id="tl" tabindex="0" role="slider" aria-label="年份，可用方向鍵調整 Year, use arrow keys" aria-valuemin="1680" aria-valuemax="2020" aria-valuenow="2020"></svg>
+  </div>
+    <div class="info" id="info" role="dialog" aria-label="廟宇資料 Temple details"></div>
+    <p class="tips"><span data-l="zh">拖曳平移，右鍵拖曳旋轉，按住 Ctrl（⌘）滾動縮放；點光點看廟宇資料。</span><span data-l="en">Drag to pan, right-drag to rotate, Ctrl (⌘) + scroll to zoom; click a light for temple details.</span></p>
+    </div>
+    <div class="veil" id="veil"><span data-l="zh">點燈中…</span><span data-l="en">Lighting the lamps…</span></div>
+  </div>
+
+  <div class="steps" id="steps">
+    <div class="step hero-step" data-step="hero">
+      <header class="hero">
+        <h1 class="plaque" aria-label="神明住在哪裡 Where Do the Gods Live?">神明住在哪裡</h1>
+        <div>
+          <p class="title-en" data-l="en">Where Do the Gods Live?</p>
+          <p class="lead" data-l="zh">台灣有上萬間廟。廟裡的神明從哪裡來，又跟著誰落腳在哪裡？</p>
+          <p class="lead" data-l="en">Taiwan has more than ten thousand temples. Where did their gods come from, and who carried them here?</p>
+          <p class="en" data-l="zh">Where Do the Gods Live?</p>
+          <span class="badge"><span data-l="zh">互動原型：目前使用示範資料</span><span data-l="en">Interactive prototype: demo data</span></span>
+          <p class="cue"><span data-l="zh">往下捲動，跟著香火渡海</span><span data-l="en">Scroll down to follow the incense across the strait</span> <span>↓</span></p>
+        </div>
+      </header>
+    </div>
+
+    <div class="step" data-step="s1"><article class="card"><svg class="ico" aria-hidden="true"><use href="#i-lantern"/></svg>
+      <h2 data-l="zh">每一盞燈，都是一間廟</h2>
+      <h2 data-l="en">Every light is a temple</h2>
+      <p data-l="zh">夜裡的台灣亮著 <strong class="nAll"></strong> 盞燈，每一盞代表一間廟（示範資料）。真實世界裡，台灣登記有案的寺廟超過一萬間。</p>
+      <p data-l="en">At night, Taiwan glows with <strong class="nAll"></strong> lights, each one a temple (demo data). In reality, Taiwan has more than ten thousand registered temples.</p>
+      <p class="note" data-l="zh">山越高，燈越少；燈火集中在西部平原與河口。</p>
+      <p class="note" data-l="en">The higher the mountains, the fewer the lights. They cluster on the western plains and at river mouths.</p>
+    </article></div>
+
+    <div class="step" data-step="s2"><article class="card">
+      <h2 data-l="zh">天亮了，依主祀神明上色</h2>
+      <h2 data-l="en">Daybreak: colored by main deity</h2>
+      <p data-l="zh">換上顏色之後，分布不再是均勻的一片。土地公散在每個聚落，媽祖沿著西部海岸，有些神明則集中在少數幾個地方。</p>
+      <p data-l="en">With color, the pattern is no longer even. Earth God shrines dot every village, Mazu lines the west coast, and some gods cluster in just a few places.</p>
+      <p data-l="zh">為什麼會這樣？答案要往海峽對岸找。</p>
+      <p data-l="en">Why? The answer lies across the strait.</p>
+    </article></div>
+
+    <div class="step" data-step="s3"><article class="card"><svg class="ico" aria-hidden="true"><use href="#i-boat"/></svg>
+      <p class="chapter"><span data-l="zh">第一章</span><span data-l="en">Chapter 1</span></p>
+      <h2 data-l="zh">神明的故鄉</h2>
+      <h2 data-l="en">Where the gods came from</h2>
+      <p data-l="zh">台灣民間信仰的主要神明，原鄉多在福建與廣東。清代渡海來台的移民，常帶著家鄉廟宇的香火同行，祈求航程平安，也在新土地上凝聚同鄉。</p>
+      <p data-l="en">Most of Taiwan’s major folk deities come from Fujian and Guangdong. Qing-era migrants often carried incense from their hometown temples, praying for a safe crossing and binding their communities together in a new land.</p>
+      <p class="note" data-l="zh">對岸亮起的光柱，是各位神明的祖廟所在地。</p>
+      <p class="note" data-l="en">The beams of light across the strait mark each god’s ancestral temple.</p>
+    </article></div>
+
+    <div class="step" data-step="s4"><article class="card">
+      <h2 data-l="zh">泉州人帶來的神明</h2>
+      <h2 data-l="en">Gods from Quanzhou</h2>
+      <p data-l="zh">同安人的保生大帝、安溪人的清水祖師、南安人的廣澤尊王。看一位神明落腳在哪裡，常常就能推測當地早期的移民來自何方。</p>
+      <p data-l="en">Tong’an people brought Baosheng Dadi, Anxi people brought Qingshui Zushi, and Nan’an people brought Guangze Zunwang. Where a god settled often tells you where a place’s early migrants came from.</p>
+    </article></div>
+
+    <div class="step" data-step="s5"><article class="card">
+      <h2 data-l="zh">漳州人的開漳聖王</h2>
+      <h2 data-l="en">Zhangzhou’s Kaizhang Shengwang</h2>
+      <p data-l="zh">唐代開發漳州的將領陳元光，被漳州移民奉為祖籍神。宜蘭平原與台北的士林、內湖一帶，都是漳州人較集中的地方。</p>
+      <p data-l="en">Chen Yuanguang, the Tang-dynasty general who developed Zhangzhou, became the ancestral god of Zhangzhou migrants. The Yilan plain and Taipei’s Shilin and Neihu were Zhangzhou strongholds.</p>
+    </article></div>
+
+    <div class="step" data-step="s6"><article class="card">
+      <h2 data-l="zh">客家人的三山國王</h2>
+      <h2 data-l="en">The Hakka Three Mountain Kings</h2>
+      <p data-l="zh">三山國王是粵東潮州一帶的山神，隨客家與潮州移民來台，分布在桃竹苗、屏東六堆與宜蘭。</p>
+      <p data-l="en">Mountain gods from the Chaozhou region of eastern Guangdong, brought by Hakka and Chaozhou migrants to Taoyuan, Hsinchu and Miaoli, the Liudui area of Pingtung, and Yilan.</p>
+    </article></div>
+
+    <div class="step" data-step="s7"><article class="card">
+      <h2 data-l="zh">換你選一位神明</h2>
+      <h2 data-l="en">Pick a god</h2>
+      <p data-l="zh">點選神明，看祂從哪裡來、在台灣落腳在哪些地方。</p>
+      <p data-l="en">Choose a god to see where it came from and where it settled in Taiwan.</p>
+      <div class="chips" id="chips7" role="group" aria-label="選擇神明 Choose a god"></div>
+      <p class="note" id="note7"></p>
+    </article></div>
+
+    <div class="step" data-step="s8"><article class="card"><svg class="ico" aria-hidden="true"><use href="#i-temple"/></svg>
+      <p class="chapter"><span data-l="zh">第二章</span><span data-l="en">Chapter 2</span></p>
+      <h2 data-l="zh">沿著河長出來的台北</h2>
+      <h2 data-l="en">Taipei grew along its rivers</h2>
+      <p data-l="zh">鏡頭降落台北盆地。早期移民沿淡水河、大漢溪、新店溪與基隆河上溯，在河港上岸，聚落和廟宇也沿著河岸長出來。艋舺、大稻埕、新莊都是這樣起家的。</p>
+      <p data-l="en">The camera lands in the Taipei Basin. Early migrants sailed up the Tamsui, Dahan, Xindian and Keelung rivers and came ashore at river ports, and settlements and temples grew along the banks. Bangka, Dadaocheng and Xinzhuang all started this way.</p>
+      <p class="note" data-l="zh">紅色牌匾標著「3D」的是代表性大廟，點進去可以看建築、建廟年份與遷移故事。</p>
+      <p class="note" data-l="en">Red plaques marked “3D” are landmark temples. Open one to explore its architecture, founding year and migration story.</p>
+    </article></div>
+
+    <div class="step" data-step="s8b"><article class="card"><svg class="ico" aria-hidden="true"><use href="#i-temple"/></svg>
+      <h2 data-l="zh">1853 年，連神明也要搬家</h2>
+      <h2 data-l="en">1853: even the gods had to move</h2>
+      <p data-l="zh">艋舺的三邑人與同安人爭奪碼頭，爆發「頂下郊拚」。落敗的同安人從火中搶出霞海城隍的神像，先退到大龍峒，再到大稻埕落腳，1859 年建成霞海城隍廟。</p>
+      <p data-l="en">Sanyi and Tong’an people in Bangka fought over the docks in what became known as the Dingxiajiao Fight. The defeated Tong’an people rescued the Xia-Hai City God’s statue from the flames, retreated to Dalongdong and then to Dadaocheng, and completed the Xia-Hai City God Temple there in 1859.</p>
+      <p data-l="zh">大稻埕後來因茶葉貿易興盛，反而比艋舺更繁華。</p>
+      <p data-l="en">Thanks to the tea trade, Dadaocheng later grew even richer than Bangka.</p>
+      <button type="button" class="btn solid" data-open3d="xiahai"><span data-l="zh">走進 3D：台北霞海城隍廟</span><span data-l="en">Enter 3D: Xia-Hai City God Temple</span></button>
+    </article></div>
+
+    <div class="step" data-step="s9"><article class="card">
+      <h2 data-l="zh">拖動時間，看廟一間間長出來</h2>
+      <h2 data-l="en">Drag through time and watch the temples rise</h2>
+      <p class="year" id="year9">1800</p>
+      <div class="row">
+        <input type="range" id="slider9" min="1700" max="2020" step="1" value="1800" aria-label="年份 Year">
+        <button class="btn" id="play9" type="button">播放</button>
+      </div>
+      <p data-l="zh">這一年以前，盆地裡已有 <strong class="count9"></strong> 間廟。</p>
+      <p data-l="en">By this year, the basin already had <strong class="count9"></strong> temples.</p>
+      <p class="note" data-l="zh">早期的廟集中在河岸邊，二十世紀以後才往東區與中永和擴散。</p>
+      <p class="note" data-l="en">Early temples hugged the riverbanks. Only in the 20th century did they spread east and into Yonghe and Zhonghe.</p>
+    </article></div>
+
+    <div class="step" data-step="s10"><article class="card"><svg class="ico" aria-hidden="true"><use href="#i-qian"/></svg>
+      <p class="chapter"><span data-l="zh">第三章</span><span data-l="en">Chapter 3</span></p>
+      <h2 data-l="zh">你家附近住著哪位神？</h2>
+      <h2 data-l="en">Which god lives near you?</h2>
+      <p data-l="zh">選一個行政區，看方圓 1.5 公里內有哪些廟。</p>
+      <p data-l="en">Pick a district to see the temples within 1.5 km.</p>
+      <label class="row"><span data-l="zh">行政區</span><span data-l="en">District</span><select id="dist10"></select></label>
+      <div class="result" id="result10"></div>
+    </article></div>
+
+    <div class="step" data-step="s11"><article class="card"><svg class="ico" aria-hidden="true"><use href="#i-fan"/></svg>
+      <p class="chapter"><span data-l="zh">第四章：意外的比較</span><span data-l="en">Chapter 4: Surprising comparisons</span></p>
+      <h2 data-l="zh">每 100 間廟，有幾間是土地公？</h2>
+      <h2 data-l="en">Out of every 100 temples, how many belong to the Earth God?</h2>
+      <p class="bigstat" id="stat11"></p>
+      <p data-l="zh">土地公沒有單一原鄉，哪裡有聚落、哪裡有田，就有一間守護那片土地的小廟。地圖上還亮著的，就是土地公廟。</p>
+      <p data-l="en">The Earth God has no single homeland: wherever there is a village or a field, there is a small shrine guarding it. The lights still glowing on the map are Earth God shrines.</p>
+      <p class="note"><span data-l="zh">數字為示範資料。</span><span data-l="en">Figures are demo data.</span></p>
+    </article></div>
+
+    <div class="step" data-step="s12"><article class="card">
+      <h2 data-l="zh">北中南東，各拜哪位神？</h2>
+      <h2 data-l="en">North, central, south, east: who do they worship?</h2>
+      <p data-l="zh">柱子越高，該區的廟越多；每一段顏色是一位神明所占的比例。</p>
+      <p data-l="en">The taller the column, the more temples in that region. Each colored band is one god’s share.</p>
+      <ul class="share" id="share12"></ul>
+      <p class="note"><span data-l="zh">數字為示範資料。</span><span data-l="en">Figures are demo data.</span></p>
+    </article></div>
+
+    <div class="step" data-step="s13"><article class="card">
+      <h2 data-l="zh">廟比便利商店多嗎？</h2>
+      <h2 data-l="en">More temples than convenience stores?</h2>
+      <p data-l="zh">紅柱是廟宇數，木色柱是便利商店數。在南部幾個縣市，廟反而比便利商店還多；只有都會區的便利商店明顯勝出。</p>
+      <p data-l="en">Red columns are temples; wooden ones are convenience stores. In several southern counties temples outnumber convenience stores. Only in the big cities do the stores clearly win.</p>
+      <div class="keys"><span><i class="dot" style="background:var(--red)"></i><span data-l="zh">廟宇數</span><span data-l="en">Temples</span></span><span><i class="dot" style="background:var(--wood)"></i><span data-l="zh">便利商店數</span><span data-l="en">Convenience stores</span></span></div>
+      <p class="note"><span data-l="zh">數字為示範資料，正式版由資料組提供。</span><span data-l="en">Figures are demo data; the data team will supply the final numbers.</span></p>
+    </article></div>
+
+    <div class="step explore-step" data-step="explore" id="explore" aria-label="第五章：自由探索 Chapter 5: Explore"></div>
+  </div>
+</section>
+
+
+
+<div class="x-root" id="x3d" hidden role="dialog" aria-modal="true" aria-label="3D 大廟 3D temple" data-lenis-prevent>
+  <div class="x-stage" id="xStage">
+    <svg class="x-leaders" id="xLeaders" aria-hidden="true"></svg>
+    <div class="x-hs-layer" id="xHs"></div>
+    <header class="x-bar">
+      <button type="button" class="x-close" id="xClose"><span data-l="zh">← 回到網站</span><span data-l="en">← Back to site</span></button>
+      <div class="x-chips" id="xChips" role="group" aria-label="選擇廟宇 Choose a temple"></div>
+    </header>
+    <p class="x-badge" id="xBadge"></p>
+    <p class="x-hint"><span data-l="zh">點編號看建築細節，拖曳可小幅旋轉。建築為風格化示意，未依真實比例建模。</span><span data-l="en">Click a number to see details; drag to rotate slightly. Stylized model, not to scale.</span></p>
+  </div>
+  <article class="x-dossier" id="xDossier" aria-live="polite" data-lenis-prevent>
+    <h2 id="xName"></h2>
+    <p class="x-en" id="xEn"></p>
+    <div class="x-yearline"><span class="x-year" id="xYear"></span><span id="xYearNote"></span></div>
+    <h3><span data-l="zh">主祀神明</span><span data-l="en">Main deity</span></h3>
+    <div class="x-deity" id="xDeity"></div>
+    <div class="x-tags" id="xPray"></div>
+    <h3><span data-l="zh">遷移動向</span><span data-l="en">Migration route</span></h3>
+    <svg class="x-mini" id="xMini" viewBox="0 0 300 232" role="img"></svg>
+    <p class="x-route" id="xRoute"></p>
+    <h3><span data-l="zh">遷移故事</span><span data-l="en">Migration story</span></h3>
+    <p class="x-story" id="xStory"></p>
+    <h3><span data-l="zh">大事年表</span><span data-l="en">Timeline</span></h3>
+    <ul class="x-tl" id="xTimeline"></ul>
+    <p class="x-fine"><span data-l="zh">年份與沿革整理自公開資料，正式版請資料組再次核對。</span><span data-l="en">Years and history are compiled from public sources; the data team should double-check them for the final version.</span></p>
+  </article>
+  <aside class="x-detail" id="xDetail" aria-live="polite">
+    <p class="x-num" id="xNum"></p>
+    <h2 id="xTitle"></h2>
+    <p class="x-den" id="xDen"></p>
+    <p class="x-txt" id="xText"></p>
+    <dl class="x-facts" id="xFacts"></dl>
+    <div class="x-dnav">
+      <button type="button" id="xBack"><span data-l="zh">返回全景</span><span data-l="en">Back to overview</span></button>
+      <button type="button" class="x-next" id="xNext"></button>
+    </div>
+  </aside>
+  <div class="x-curtain" id="xCurtain" aria-hidden="true">
+    <p class="x-plaque" id="xPlaque"></p>
+    <svg class="x-wave" viewBox="0 0 1200 120" preserveAspectRatio="none"><path d="M0,0 L1200,0 L1200,40 C1000,120 800,10 600,60 C400,110 200,20 0,70 Z"/></svg>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const isMobile = () => matchMedia('(max-width:760px)').matches;
+const isDark = () => { const t = document.documentElement.dataset.theme; return t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches); };
+const $ = id => document.getElementById(id);
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const smooth = (e0, e1, x) => { const t = clamp((x - e0)/(e1 - e0), 0, 1); return t*t*(3 - 2*t); };
+const lerp = (a, b, t) => a + (b - a)*t;
+const HAS3D = !!window.THREE;
+
+/* ===== 雙語 Bilingual ===== */
+let LANG = 'zh';
+try{ const q = new URLSearchParams(location.search).get('lang'); LANG = (q === 'en' || q === 'zh') ? q : (localStorage.getItem('gods-lang') === 'en' ? 'en' : 'zh'); }catch(e){}
+document.documentElement.dataset.lang = LANG;
+const T = (zh, en) => LANG === 'en' ? en : zh;
+const NUM = n => n.toLocaleString(LANG === 'en' ? 'en-US' : 'zh-TW');
+const LANG_HOOKS = [];
+const onLang = f => { LANG_HOOKS.push(f); };
+
+/* ===== 地理（示意） ===== */
+const COS = Math.cos(24.5*Math.PI/180);
+const wx = lng => lng*COS*100, wy = lat => -lat*100;
+const distKm = (a, b) => Math.hypot((a.lng - b.lng)*COS*111, (a.lat - b.lat)*111);
+const pathOf = pts => 'M' + pts.map(p => wx(p[0]).toFixed(2) + ',' + wy(p[1]).toFixed(2)).join('L');
+const TW = [[121.51,25.30],[121.58,25.29],[121.66,25.22],[121.74,25.15],[121.86,25.12],[121.93,25.04],[122.00,25.01],[121.90,24.90],[121.85,24.78],[121.83,24.70],[121.87,24.60],[121.82,24.45],[121.70,24.25],[121.62,24.00],[121.55,23.70],[121.50,23.45],[121.42,23.15],[121.30,22.92],[121.15,22.75],[121.00,22.55],[120.90,22.35],[120.86,22.10],[120.85,21.95],[120.80,21.90],[120.74,21.93],[120.70,22.05],[120.60,22.30],[120.45,22.48],[120.30,22.60],[120.22,22.80],[120.10,23.00],[120.08,23.20],[120.12,23.45],[120.15,23.70],[120.25,23.90],[120.40,24.15],[120.60,24.40],[120.75,24.65],[120.90,24.85],[121.05,25.00],[121.20,25.10],[121.38,25.17],[121.45,25.25]];
+const CN = [[120.6,27.6],[120.2,27.0],[119.8,26.6],[119.65,26.2],[119.55,25.75],[119.3,25.45],[119.05,25.15],[118.95,24.95],[118.7,24.85],[118.6,24.65],[118.2,24.42],[117.95,24.25],[117.6,23.95],[117.2,23.6],[116.8,23.3],[116.4,22.95],[115.8,22.75],[115.2,22.75],[114.6,22.5],[113.5,22.4],[113.5,27.6]];
+const ISLETS = [[119.58,23.57,.07,.09],[118.35,24.44,.07,.035],[119.95,26.16,.03,.04]];
+const RIVERS = [
+  {name:'淡水河', pts:[[121.40,25.175],[121.435,25.15],[121.468,25.12],[121.488,25.085],[121.505,25.06],[121.498,25.045],[121.49,25.035],[121.484,25.024]]},
+  {name:'大漢溪', pts:[[121.484,25.024],[121.465,25.025],[121.445,25.012],[121.425,24.99],[121.40,24.96],[121.375,24.935],[121.36,24.915]]},
+  {name:'新店溪', pts:[[121.484,25.024],[121.495,25.015],[121.51,25.005],[121.525,24.995],[121.535,24.98],[121.54,24.965],[121.548,24.945]]},
+  {name:'基隆河', pts:[[121.468,25.12],[121.49,25.10],[121.515,25.088],[121.54,25.083],[121.565,25.073],[121.595,25.068],[121.62,25.058],[121.66,25.065]]}
+];
+const VIEWS = {tw:[[119.95,21.85],[122.05,25.35]], basin:[[121.36,24.915],[121.63,25.185]]};
+
+/* ===== 神明表（對應 deities.csv） ===== */
+const DEITIES = [
+  {deity_id:'mazu', name:'媽祖', aliases:'天上聖母、天后', origin_place:'福建莆田湄洲', origin_short:'湄洲', origin_lng:119.13, origin_lat:25.07, group:'跨族群，沿海移民共同信仰', desc:'航海守護神，渡海移民最普遍帶來的信仰。', color:'#C2362B', colorDark:'#E8604F'},
+  {deity_id:'baosheng', name:'保生大帝', aliases:'大道公、吳真人', origin_place:'福建泉州同安（白礁）', origin_short:'白礁', origin_lng:117.95, origin_lat:24.48, group:'泉州同安人', desc:'宋代名醫吳夲，被奉為醫神。', color:'#2F7D68', colorDark:'#4FB394'},
+  {deity_id:'qingshui', name:'清水祖師', aliases:'祖師公', origin_place:'福建泉州安溪', origin_short:'安溪', origin_lng:118.10, origin_lat:25.15, group:'泉州安溪人', desc:'宋代高僧陳普足，安溪移民的守護神。', color:'#3D5A8F', colorDark:'#86A2DA'},
+  {deity_id:'kaizhang', name:'開漳聖王', aliases:'陳聖王', origin_place:'福建漳州', origin_short:'漳州', origin_lng:117.65, origin_lat:24.51, group:'漳州人', desc:'唐代開發漳州的將領陳元光。', color:'#C47F12', colorDark:'#E7A93F'},
+  {deity_id:'sanshan', name:'三山國王', aliases:'', origin_place:'廣東潮州揭西', origin_short:'揭西', origin_lng:115.83, origin_lat:23.43, group:'粵東客家人與潮州人', desc:'巾山、明山、獨山三座山的山神。', color:'#7B4FA3', colorDark:'#B08BD6'},
+  {deity_id:'guangze', name:'廣澤尊王', aliases:'郭聖王', origin_place:'福建泉州南安', origin_short:'南安', origin_lng:118.32, origin_lat:25.10, group:'泉州南安人', desc:'南安鳳山寺供奉的郭忠福。', color:'#B04C7C', colorDark:'#E08BB2'},
+  {deity_id:'tudi', name:'福德正神', aliases:'土地公', origin_place:'', origin_short:'', origin_lng:null, origin_lat:null, group:'各族群普遍信仰', desc:'守護一方土地，聚落有多少，土地公廟就有多少。', color:'#6E5B3A', colorDark:'#C2B08A'}
+];
+const DMAP = Object.fromEntries(DEITIES.map(d => [d.deity_id, d]));
+const col = id => isDark() ? DMAP[id].colorDark : DMAP[id].color;
+const DEN = {
+  mazu:{name:'Mazu', short:'Mazu', aliases:'Heavenly Holy Mother, Empress of Heaven', origin_place:'Meizhou, Putian, Fujian', origin_short:'Meizhou', group:'coastal migrants of every background', desc:'Goddess of the sea, the faith migrants most often carried across the strait.'},
+  baosheng:{name:'Baosheng Dadi', short:'Baosheng Dadi', aliases:'Dadaogong, Wu Zhenren', origin_place:'Baijiao, Tong’an, Quanzhou, Fujian', origin_short:'Baijiao', group:'Tong’an people from Quanzhou', desc:'Wu Tao, a Song-dynasty physician revered as a god of medicine.'},
+  qingshui:{name:'Qingshui Zushi', short:'Qingshui Zushi', aliases:'Zushigong', origin_place:'Anxi, Quanzhou, Fujian', origin_short:'Anxi', group:'Anxi people from Quanzhou', desc:'Chen Puzu, a Song-dynasty monk and guardian of Anxi migrants.'},
+  kaizhang:{name:'Kaizhang Shengwang', short:'Kaizhang Shengwang', aliases:'Sacred King Chen', origin_place:'Zhangzhou, Fujian', origin_short:'Zhangzhou', group:'Zhangzhou people', desc:'Chen Yuanguang, the Tang-dynasty general who developed Zhangzhou.'},
+  sanshan:{name:'Three Mountain Kings', short:'Three Mountain Kings', aliases:'gods of Mounts Jin, Ming and Du', origin_place:'Jiexi, Chaozhou, Guangdong', origin_short:'Jiexi', group:'Hakka and Chaozhou people from eastern Guangdong', desc:'Mountain gods of Mount Jin, Mount Ming and Mount Du.'},
+  guangze:{name:'Guangze Zunwang', short:'Guangze Zunwang', aliases:'Sacred King Guo', origin_place:'Nan’an, Quanzhou, Fujian', origin_short:'Nan’an', group:'Nan’an people from Quanzhou', desc:'Guo Zhongfu, worshipped at Fengshan Temple in Nan’an.'},
+  tudi:{name:'Fude Zhengshen', short:'Earth God', aliases:'Tudigong, the Earth God', origin_place:'', origin_short:'', group:'people of every community', desc:'Guardian of a patch of land: wherever there is a settlement, there is an Earth God shrine.'}
+};
+const DF = (d, k) => LANG === 'en' ? DEN[d.deity_id][k] : d[k];
+const shortName = d => LANG === 'en' ? DEN[d.deity_id].short : (d.deity_id === 'tudi' ? '土地公' : d.name);
+const PN = {
+  '基隆市':'Keelung','台北市':'Taipei','新北市':'New Taipei','桃園市':'Taoyuan','新竹縣市':'Hsinchu','苗栗縣':'Miaoli','台中市':'Taichung','彰化縣':'Changhua','南投縣':'Nantou','雲林縣':'Yunlin','嘉義縣市':'Chiayi','台南市':'Tainan','高雄市':'Kaohsiung','屏東縣':'Pingtung','宜蘭縣':'Yilan','花蓮縣':'Hualien','台東縣':'Taitung',
+  '萬華區':'Wanhua','大同區':'Datong','中正區':'Zhongzheng','中山區':'Zhongshan','士林區':'Shilin','北投區':'Beitou','內湖區':'Neihu','信義區':'Xinyi','文山區':'Wenshan','板橋區':'Banqiao','新莊區':'Xinzhuang','三重區':'Sanchong','蘆洲區':'Luzhou','永和區':'Yonghe','中和區':'Zhonghe','新店區':'Xindian','三峽區':'Sanxia','淡水區':'Tamsui',
+  '淡水':'Tamsui','新莊':'Xinzhuang','艋舺':'Bangka','大龍峒':'Dalongdong','大稻埕':'Dadaocheng','士林':'Shilin','內湖':'Neihu','板橋':'Banqiao','三峽':'Sanxia','新店':'Xindian','景美':'Jingmei','三重':'Sanchong','中永和':'Yonghe–Zhonghe','東區':'East District','北投':'Beitou','北港':'Beigang',
+  '淡水河':'Tamsui River','基隆河':'Keelung River','大漢溪':'Dahan River','新店溪':'Xindian River',
+  '北部':'North','中部':'Central','南部':'South','東部':'East','台灣':'Taiwan'
+};
+const pn = x => LANG === 'en' ? (PN[x] || x) : x;
+
+/* ===== 假資料產生器（正式版改為讀取 CSV） ===== */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rng = mulberry32(20261110);
+const gauss = () => { let u = 0, v = 0; while(!u) u = rng(); while(!v) v = rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); };
+const pick = arr => arr[Math.floor(rng()*arr.length)];
+function weighted(obj){ const e = Object.entries(obj); let r = rng()*d3.sum(e, x => x[1]); for(const [k, w] of e){ if((r -= w) <= 0) return k; } return e[0][0]; }
+function nearestBy(list, lng, lat, fl, fa){ let best = null, bd = Infinity; for(const c of list){ const d = ((fl(c) - lng)*COS)**2 + (fa(c) - lat)**2; if(d < bd){ bd = d; best = c; } } return best; }
+const CLUSTERS = {
+  mazu:[[120.20,23.00,.12,6],[120.32,23.47,.12,4],[120.32,23.58,.08,4],[120.45,24.07,.1,4],[120.62,24.33,.08,4],[120.97,24.80,.1,2],[121.48,25.06,0,3,'basin'],[121.75,24.72,.07,2],[120.36,22.68,.1,4],[120.52,22.50,.1,3],[121.56,23.95,.05,1],[121.10,22.78,.05,1]],
+  baosheng:[[120.22,23.02,.12,7],[120.33,23.47,.1,3],[121.515,25.07,0,4,'basin'],[120.36,22.68,.1,2],[120.48,24.05,.1,2]],
+  qingshui:[[121.37,24.93,0,4,'basin'],[121.50,25.04,0,3,'basin'],[121.28,24.94,.07,2],[120.22,23.0,.1,2],[120.36,22.68,.1,1]],
+  kaizhang:[[121.74,24.70,.07,6],[121.53,25.09,0,4,'basin'],[121.27,24.95,.08,2],[120.62,24.15,.1,1],[120.47,24.05,.1,1]],
+  sanshan:[[120.55,22.68,.1,6],[121.02,24.72,.12,5],[121.20,24.88,.08,3],[121.73,24.67,.06,3],[120.55,23.95,.08,2],[121.45,25.035,0,2,'basin']],
+  guangze:[[120.20,23.0,.1,3],[120.35,23.70,.1,2],[121.49,25.035,0,3,'basin'],[120.47,24.05,.08,1]],
+  tudi:[[120.22,23.02,.15,8],[120.33,23.47,.15,5],[120.45,23.80,.15,5],[120.50,24.05,.12,6],[120.68,24.18,.15,8],[120.95,24.70,.15,6],[121.25,24.92,.12,6],[121.74,24.70,.08,4],[120.36,22.70,.15,8],[120.55,22.55,.12,5],[121.56,23.92,.06,2],[121.12,22.80,.06,2],[120.85,23.90,.12,3],[120.62,23.30,.15,3]]
+};
+const TOTAL = {mazu:300, baosheng:150, qingshui:60, kaizhang:70, sanshan:130, guangze:50, tudi:700};
+const COUNTIES = [['基隆市',121.74,25.13],['桃園市',121.25,24.93],['新竹縣市',121.0,24.78],['苗栗縣',120.85,24.55],['台中市',120.68,24.18],['彰化縣',120.50,24.03],['南投縣',120.90,23.85],['雲林縣',120.40,23.70],['嘉義縣市',120.40,23.45],['台南市',120.25,23.05],['高雄市',120.38,22.75],['屏東縣',120.55,22.45],['宜蘭縣',121.75,24.70],['花蓮縣',121.55,23.85],['台東縣',121.10,22.85],['新北市',121.62,24.95]];
+const DISTRICTS = [['台北市','萬華區',121.499,25.035],['台北市','大同區',121.513,25.063],['台北市','中正區',121.519,25.032],['台北市','中山區',121.533,25.064],['台北市','士林區',121.525,25.092],['台北市','北投區',121.501,25.132],['台北市','內湖區',121.589,25.080],['台北市','信義區',121.565,25.033],['台北市','文山區',121.557,24.992],['新北市','板橋區',121.462,25.012],['新北市','新莊區',121.450,25.036],['新北市','三重區',121.488,25.062],['新北市','蘆洲區',121.473,25.085],['新北市','永和區',121.515,25.008],['新北市','中和區',121.499,24.995],['新北市','新店區',121.540,24.968],['新北市','三峽區',121.369,24.934],['新北市','淡水區',121.443,25.170]];
+const DIST_BY_NAME = Object.fromEntries(DISTRICTS.map(d => [d[1], {county:d[0], name:d[1], lng:d[2], lat:d[3]}]));
+const SETTLE = [
+  {name:'淡水',lng:121.443,lat:25.170,s:.012,n:14,y:[1700,1900],d:{mazu:4,qingshui:3,tudi:4}},
+  {name:'新莊',lng:121.452,lat:25.036,s:.010,n:18,y:[1720,1880],d:{mazu:3,sanshan:3,tudi:4,guangze:1}},
+  {name:'艋舺',lng:121.499,lat:25.037,s:.006,n:20,y:[1740,1890],d:{qingshui:3,mazu:3,guangze:2,tudi:3}},
+  {name:'大龍峒',lng:121.515,lat:25.072,s:.006,n:12,y:[1750,1900],d:{baosheng:5,tudi:3,mazu:1}},
+  {name:'大稻埕',lng:121.511,lat:25.057,s:.006,n:16,y:[1850,1930],d:{mazu:3,tudi:4,baosheng:1,guangze:1}},
+  {name:'士林',lng:121.525,lat:25.093,s:.008,n:12,y:[1760,1910],d:{kaizhang:5,tudi:3,mazu:1}},
+  {name:'內湖',lng:121.588,lat:25.080,s:.010,n:10,y:[1800,1960],d:{kaizhang:3,tudi:4}},
+  {name:'板橋',lng:121.462,lat:25.012,s:.010,n:14,y:[1790,1950],d:{mazu:3,kaizhang:2,tudi:4}},
+  {name:'三峽',lng:121.370,lat:24.935,s:.010,n:12,y:[1760,1920],d:{qingshui:5,tudi:4}},
+  {name:'新店',lng:121.540,lat:24.968,s:.010,n:10,y:[1840,1990],d:{tudi:5,baosheng:1}},
+  {name:'景美',lng:121.545,lat:24.993,s:.008,n:10,y:[1790,1960],d:{baosheng:3,tudi:4}},
+  {name:'三重',lng:121.488,lat:25.065,s:.009,n:14,y:[1880,2000],d:{tudi:4,mazu:2,baosheng:1}},
+  {name:'中永和',lng:121.508,lat:25.000,s:.010,n:18,y:[1930,2015],d:{tudi:5,mazu:2,baosheng:1}},
+  {name:'東區',lng:121.560,lat:25.040,s:.012,n:16,y:[1940,2015],d:{tudi:5,mazu:1,guangze:1}},
+  {name:'北投',lng:121.505,lat:25.132,s:.010,n:10,y:[1800,1980],d:{tudi:4,mazu:1,kaizhang:1}}
+];
+const P1 = '福慈保鎮興龍聖德安靈永和清護崇集'.split(''), P2 = '安德福聖雲山興靈濟元天明善順'.split('');
+function makeName(id){
+  if(id === 'tudi' && rng() < .55) return pick(P1) + pick(P2) + '福德祠';
+  if(id === 'qingshui' && rng() < .5) return pick(P1) + pick(P2) + '巖';
+  return pick(P1) + pick(P2) + pick(['宮','宮','宮','廟','殿']);
+}
+const BB = {x0:121.33, x1:121.68, y0:24.88, y1:25.22};
+const inBB = (lng, lat) => lng > BB.x0 && lng < BB.x1 && lat > BB.y0 && lat < BB.y1;
+const TEMPLES = []; let seq = 1;
+function addTemple(o){
+  o.temple_id = 'T' + String(seq++).padStart(4, '0');
+  o.addrNo = 1 + Math.floor(rng()*300);
+  o.source = '示範假資料';
+  o.wx = wx(o.lng); o.wy = wy(o.lat); o.ev = true;
+  TEMPLES.push(o);
+}
+DEITIES.forEach(d => {
+  const cl = CLUSTERS[d.deity_id].filter(c => !c[4]);
+  const tw = d3.sum(cl, c => c[3]);
+  cl.forEach(c => {
+    const n = Math.round(TOTAL[d.deity_id]*c[3]/tw);
+    for(let i = 0; i < n; i++){
+      let lng, lat, ok = false;
+      for(let t = 0; t < 40 && !ok; t++){
+        lng = c[0] + gauss()*c[2]; lat = c[1] + gauss()*c[2]*.85;
+        ok = d3.polygonContains(TW, [lng, lat]) && !inBB(lng, lat);
+      }
+      if(!ok) continue;
+      const y = Math.min(2020, 1680 + Math.floor(340*Math.pow(rng(), 1.15)));
+      const cty = nearestBy(COUNTIES, lng, lat, x => x[1], x => x[2]);
+      addTemple({name:makeName(d.deity_id), deity_id:d.deity_id, lng, lat, county:cty[0], district:'', founded_year:y, year_estimated:y < 1895 && rng() < .6});
+    }
+  });
+});
+SETTLE.forEach(s => {
+  for(let i = 0; i < s.n; i++){
+    const lng = s.lng + gauss()*s.s, lat = s.lat + gauss()*s.s*.9;
+    const id = weighted(s.d);
+    const y = Math.round(s.y[0] + (s.y[1] - s.y[0])*Math.pow(rng(), 1.3));
+    const dist = nearestBy(DISTRICTS, lng, lat, x => x[2], x => x[3]);
+    addTemple({name:makeName(id), deity_id:id, lng, lat, county:dist[0], district:dist[1], founded_year:y, year_estimated:y < 1895 && rng() < .6});
+  }
+});
+const BASIN = TEMPLES.filter(p => p.district);
+const addr = p => LANG === 'en' ? `No. ${p.addrNo}, Demo Rd., ${p.district ? pn(p.district) + ', ' : ''}${pn(p.county)}` : `${p.county}${p.district}示範路${p.addrNo}號`;
+onLang(() => document.querySelectorAll('.nAll').forEach(el => { el.textContent = NUM(TEMPLES.length); }));
+
+/* ===== 大廟資料（3D 用；整理自公開資料，待資料組核對） ===== */
+const BIG = [
+  {id:'baoan', name:'大龍峒保安宮', en:'Dalongdong Baoan Temple', place:'台北大同區', lng:121.5156, lat:25.0732, deity:'baosheng',
+   year:1742, yearNote:'奉香火來台建小廟', heritage:'國定古蹟', real:true, model:'https://canet.civil.taipei/tp90-1/model/103001.kmz',
+   from:{n:'福建泉州同安（白礁）', s:'同安白礁', lng:117.95, lat:24.48}, to:{s:'大龍峒'}, group:'泉州同安人',
+   story:'1742 年，來自福建同安的移民奉請保生大帝的香火渡海，在大龍峒搭起簡易小廟奉祀。廟名「保安」，取的是保佑同安人的意思。1804 年起興建規模更大的廟宇，成為大龍峒同安人的信仰中心。',
+   timeline:[['1742','同安移民奉保生大帝香火來台，在大龍峒建簡易小廟'],['1804','開始興建現今的保安宮'],['2003','獲聯合國教科文組織亞太文化資產保存獎']],
+   roof:0x9e3b25, trim:0x2f5fa8, wc:6.5, ws:4, hc:4.8, hs:3.9, cols:6, wm:14, hm:6, dm:7},
+  {id:'qingshuiyan', name:'艋舺清水巖', en:'Bangka Qingshui Temple', place:'台北萬華區', lng:121.5027, lat:25.0403, deity:'qingshui',
+   year:1787, yearNote:'動工（1790 年落成）', heritage:'台北市古蹟', real:true, model:'https://canet.civil.taipei/tp90-1/model/108004.kmz',
+   from:{n:'福建泉州安溪（蓬萊清水巖）', s:'安溪', lng:118.10, lat:25.15}, to:{s:'艋舺'}, group:'泉州安溪人',
+   story:'渡台的安溪先民推舉翁有來主事，募款以從家鄉安溪蓬萊清水巖帶來的清水祖師香火建廟，1787 年動工、1790 年落成。廟裡的蓬萊祖師俗稱「落鼻祖師」，相傳天災地變前，神像的鼻子會自行掉落示警。它與龍山寺、保安宮並稱「台北三大廟門」。',
+   timeline:[['1787','安溪移民募款動工'],['1790','落成'],['1817','颱風毀損後募資重建'],['1940','後殿失火，至今未重建']],
+   roof:0x8e3a26, trim:0x2f8f6b, wc:6.5, ws:3.8, hc:5, hs:4, cols:6, wm:13, hm:6, dm:6.5},
+  {id:'xiahai', name:'台北霞海城隍廟', en:'Taipei Xia-Hai City God Temple', place:'台北大同區（大稻埕）', lng:121.5101, lat:25.0558, deity:'chenghuang',
+   year:1859, yearNote:'落成（1856 年動工）', heritage:'台北市古蹟', real:true, model:'https://canet.civil.taipei/tp90-1/model/103002.kmz',
+   from:{n:'福建泉州同安（霞城）', s:'同安', lng:118.15, lat:24.73}, to:{s:'艋舺→大稻埕'}, group:'泉州同安人',
+   story:'霞海城隍最早由同安移民從家鄉請來，在艋舺建廟奉祀。1853 年艋舺爆發「頂下郊拚」，同安人在械鬥中落敗，從火中搶出城隍爺神像，先退到大龍峒、再到大稻埕，1856 年動工、1859 年建成今天的霞海城隍廟。廟裡也奉祀在械鬥中殉難的 38 位同安鄉勇，稱為「義勇公」。',
+   timeline:[['1853','頂下郊拚，同安人帶著城隍神像撤離艋舺'],['1856','在大稻埕購地動工'],['1859','落成，成為大稻埕的信仰中心'],['1971','開始供奉月下老人']],
+   roof:0xa04a2c, trim:0xc9a24a, wc:5.2, ws:0, hc:4.2, hs:0, cols:4, wm:7.5, hm:4.8, dm:5},
+  {id:'huiji', name:'芝山巖惠濟宮', en:'Zhishanyan Huiji Temple', place:'台北士林區', lng:121.5308, lat:25.1031, deity:'kaizhang',
+   year:1752, yearNote:'始建（1764 年完工）', heritage:'台北市古蹟', real:true, model:'https://canet.civil.taipei/tp90-1/model/111003.kmz',
+   pray:['保境安民','學業（文昌帝君）'],
+   from:{n:'福建漳州', s:'漳州', lng:117.65, lat:24.51}, to:{s:'芝山岩（士林）'}, group:'漳州人',
+   story:'18 世紀初，漳州移民來到今天的士林一帶開墾，覺得這座孤立在平原上的小山丘很像家鄉漳州的芝山，便取名「芝山岩」，也把守護神開漳聖王一起帶來，1752 年起在山上建惠濟宮。這裡後來也供奉觀音與文昌帝君；19 世紀漳泉械鬥時，漳州人曾以芝山岩為據點設隘門防守。',
+   timeline:[['1752','漳州移民開始建廟'],['1764','完工'],['1840','山上建文昌祠並設私塾'],['1895','設立芝山巖學堂，為台灣第一座近代教育機構']],
+   roof:0x9a4128, trim:0x2f5fa8, wc:6.5, ws:3.8, hc:5, hs:4, cols:6, wm:13, hm:6.2, dm:7},
+  {id:'guandu', name:'關渡宮', en:'Guandu Temple', place:'台北北投區', lng:121.4639, lat:25.1177, deity:'mazu',
+   year:1712, yearNote:'建廟（原名靈山廟）', heritage:'北台灣最古老的媽祖廟之一', real:true, model:'https://canet.civil.taipei/tp90-1/model/112002.kmz',
+   from:{n:'福建（媽祖信仰源自莆田湄洲）', s:'湄洲', lng:119.13, lat:25.07}, to:{s:'關渡'}, group:'福建移民',
+   story:'根據關渡宮的說法，1661 年僧人石興從福建迎來媽祖神像；1712 年正式建廟，原稱「靈山廟」。民間有「南有北港媽，北有關渡媽」的說法。相傳 1895 年廟口三棵老榕樹一夜枯死，居民視為媽祖示警，因而避過隨後日軍進入關渡的災難。',
+   timeline:[['1661','相傳僧人石興從福建迎來媽祖神像'],['1712','正式建廟，原稱靈山廟'],['1895','相傳老榕樹枯死示警，居民避過戰禍'],['1954','戰後展開大規模修築']],
+   roof:0xb4532e, trim:0x2f8f6b, wc:7, ws:4.2, hc:5.2, hs:4.2, cols:6, wm:15, hm:6.4, dm:7},
+  {id:'chaotian', name:'北港朝天宮', en:'Beigang Chaotian Temple', place:'雲林北港', lng:120.3045, lat:23.5675, deity:'mazu',
+   year:1700, yearNote:'建廟（1694 年神像來台）', heritage:'國定古蹟', real:false,
+   from:{n:'福建莆田湄洲', s:'湄洲', lng:119.13, lat:25.07}, to:{s:'笨港（今北港）'}, group:'福建移民',
+   story:'1694 年，臨濟宗僧人樹璧奉著湄洲媽祖的神像渡海，在笨港上岸。當時笨港是船隻聚集的港口，移民多半來自福建、信奉湄洲媽祖卻無處參拜，於是請他留下神像供奉。1700 年地方居民合力建起小廟，香火一路興旺，今天台灣許多媽祖廟都由這裡分靈出去。',
+   timeline:[['1694','僧人樹璧奉湄洲媽祖神像來台，在笨港上岸'],['1700','陳立勳捐地，居民合力建「天妃廟」'],['1730','重建擴大，改稱「笨港天后宮」'],['2011','「北港迎媽祖」列為國家重要民俗']],
+   roof:0xb4532e, trim:0x2f8f6b, wc:7, ws:4.2, hc:5, hs:4, cols:6, wm:15, hm:6.2, dm:7},
+  {id:'changfu', name:'三峽長福巖', en:'Sanxia Changfu Temple', place:'新北三峽區', lng:121.3687, lat:24.935, deity:'qingshui',
+   year:1769, yearNote:'建廟', heritage:'新北市市定古蹟', real:false,
+   from:{n:'福建泉州安溪', s:'安溪', lng:118.10, lat:25.15}, to:{s:'三角湧（今三峽）'}, group:'泉州安溪人',
+   story:'安溪人渡海來台時，帶著家鄉的清水祖師同行，在三角湧（今三峽）沿河岸開墾定居，1769 年建廟。兩百多年間，廟宇歷經地震與戰火三度重建；戰後由畫家李梅樹主持，邀集多位藝術家與匠師參與，讓它有了「東方藝術殿堂」的稱號。',
+   timeline:[['1769','安溪移民在三角湧創建'],['1833','因地震毀損，第一次重建'],['1895','乙未戰爭中遭日軍焚毀，1899 年重建'],['1947','畫家李梅樹主持第三次重建'],['2018','公告為新北市市定古蹟']],
+   roof:0x7e3324, trim:0xc9a24a, wc:6, ws:3.6, hc:5.4, hs:4.2, cols:4, wm:12, hm:6.6, dm:6.5},
+  {id:'guangfu', name:'新莊廣福宮', en:'Xinzhuang Guangfu Temple', place:'新北新莊區', lng:121.4545, lat:25.0365, deity:'sanshan',
+   year:1780, yearNote:'建廟', heritage:'國定古蹟', real:false,
+   from:{n:'廣東潮州揭西（霖田祖廟）', s:'揭西', lng:115.83, lat:23.43}, to:{s:'新莊'}, group:'廣東潮州府移民（客家）',
+   story:'來自廣東潮州府的移民在新莊落腳後，1780 年建起廣福宮，奉祀家鄉揭西的三山國王。這裡是北台灣具代表性的潮州府移民信仰中心，至今仍會在獨山國王聖誕時舉辦慶典與收冬戲，延續客庄在收成後謝神的習俗。',
+   timeline:[['1780','潮州府移民在新莊建廟，奉祀三山國王'],['今','國定古蹟，每年仍舉辦聖誕慶典與收冬戲']],
+   roof:0x8a4a30, trim:0x5b4a35, wc:6.2, ws:0, hc:4.4, hs:0, cols:4, wm:11, hm:5.2, dm:6}
+];
+const BEN = {
+  baoan:{name:'Dalongdong Baoan Temple', place:'Datong District, Taipei', yearNote:'incense brought over; small shrine built', heritage:'National monument', fromN:'Baijiao, Tong’an, Quanzhou, Fujian', fromS:'Baijiao', toS:'Dalongdong', group:'Tong’an people from Quanzhou',
+    story:'In 1742, migrants from Tong’an in Fujian carried incense from Baosheng Dadi’s home temple across the strait and set up a simple shrine in Dalongdong. The name “Bao’an” means “protecting the people of Tong’an.” Work on a much larger temple began in 1804, and it became the spiritual center of Dalongdong’s Tong’an community.',
+    timeline:[['1742','Tong’an migrants bring Baosheng Dadi’s incense and build a simple shrine in Dalongdong'],['1804','Construction of today’s temple begins'],['2003','Receives a UNESCO Asia-Pacific Award for Cultural Heritage Conservation']]},
+  qingshuiyan:{name:'Bangka Qingshui Temple', place:'Wanhua District, Taipei', yearNote:'construction began (completed 1790)', heritage:'Taipei City monument', fromN:'Penglai Qingshui Rock, Anxi, Quanzhou, Fujian', fromS:'Anxi', toS:'Bangka', group:'Anxi people from Quanzhou',
+    story:'Anxi settlers chose Weng Youlai to lead a fundraising drive and built a temple for the Qingshui Zushi incense they had brought from Penglai Qingshui Rock in Anxi. Work began in 1787 and finished in 1790. The temple’s Penglai Zushi is nicknamed the “Falling-Nose Patriarch”: legend says the statue’s nose drops off to warn of coming disasters. With Longshan Temple and Baoan Temple, it is counted among Taipei’s three great temples.',
+    timeline:[['1787','Anxi migrants raise funds and begin construction'],['1790','Completed'],['1817','Rebuilt after typhoon damage'],['1940','Rear hall destroyed by fire, never rebuilt']]},
+  xiahai:{name:'Taipei Xia-Hai City God Temple', place:'Dadaocheng, Datong District, Taipei', yearNote:'completed (construction began 1856)', heritage:'Taipei City monument', fromN:'Xiacheng, Tong’an, Quanzhou, Fujian', fromS:'Tong’an', toS:'Bangka → Dadaocheng', group:'Tong’an people from Quanzhou',
+    story:'Tong’an migrants first brought the Xia-Hai City God from their hometown and enshrined him in Bangka. In 1853 the Dingxiajiao Fight broke out there. The defeated Tong’an people rescued the City God’s statue from the flames, retreated first to Dalongdong and then to Dadaocheng, began building in 1856 and completed today’s temple in 1859. The temple also honors 38 Tong’an militiamen killed in the fighting, known as the “Righteous and Brave Lords.”',
+    timeline:[['1853','Dingxiajiao Fight: Tong’an people flee Bangka with the City God’s statue'],['1856','Land bought and construction begins in Dadaocheng'],['1859','Completed; becomes the spiritual center of Dadaocheng'],['1971','Begins enshrining the Old Man Under the Moon, the matchmaker god']]},
+  huiji:{name:'Zhishanyan Huiji Temple', place:'Shilin District, Taipei', yearNote:'construction began (completed 1764)', heritage:'Taipei City monument', fromN:'Zhangzhou, Fujian', fromS:'Zhangzhou', toS:'Zhishanyan (Shilin)', group:'Zhangzhou people', pray:['protecting the community','success in study (Wenchang Dijun)'],
+    story:'In the early 18th century, Zhangzhou migrants settling around today’s Shilin thought a small hill rising from the plain looked like Zhishan back home, so they named it Zhishanyan. They brought their guardian Kaizhang Shengwang with them and began building Huiji Temple on the hill in 1752. Guanyin and Wenchang Dijun were later enshrined here too, and during 19th-century clashes between Zhangzhou and Quanzhou people, the Zhangzhou side used the hill as a fortified stronghold.',
+    timeline:[['1752','Zhangzhou migrants begin building'],['1764','Completed'],['1840','A Wenchang shrine and private school are built on the hill'],['1895','Zhishanyan School opens, Taiwan’s first modern school']]},
+  guandu:{name:'Guandu Temple', place:'Beitou District, Taipei', yearNote:'founded (originally Lingshan Temple)', heritage:'One of northern Taiwan’s oldest Mazu temples', fromN:'Fujian (Mazu worship originates in Meizhou, Putian)', fromS:'Meizhou', toS:'Guandu', group:'Fujianese migrants',
+    story:'According to the temple, the monk Shi Xing brought a statue of Mazu from Fujian in 1661, and the temple was formally founded in 1712 as Lingshan Temple. A popular saying pairs “Beigang Mazu in the south, Guandu Mazu in the north.” Legend says that in 1895 three old banyan trees at the temple gate died overnight; residents took it as Mazu’s warning and escaped harm when Japanese troops entered Guandu soon after.',
+    timeline:[['1661','The monk Shi Xing is said to bring a Mazu statue from Fujian'],['1712','Formally founded as Lingshan Temple'],['1895','Legend of the banyan trees’ warning; residents escape the war'],['1954','Major postwar renovation']]},
+  chaotian:{name:'Beigang Chaotian Temple', place:'Beigang, Yunlin', yearNote:'founded (statue arrived 1694)', heritage:'National monument', fromN:'Meizhou, Putian, Fujian', fromS:'Meizhou', toS:'Bengang (now Beigang)', group:'Fujianese migrants',
+    story:'In 1694 the Linji Buddhist monk Shubi crossed the strait with a statue of Mazu from Meizhou and landed at Bengang. Bengang was then a busy port, and its mostly Fujianese settlers, devoted to Meizhou’s Mazu but with nowhere to worship, asked him to keep the statue there. In 1700 residents built a small temple together. It has flourished ever since, and many Mazu temples across Taiwan were founded as branches of this one.',
+    timeline:[['1694','The monk Shubi brings a Meizhou Mazu statue and lands at Bengang'],['1700','Chen Lixun donates land; residents build the Tianfei Temple'],['1730','Rebuilt and enlarged, renamed Bengang Tianhou Temple'],['2011','The Beigang Mazu procession is listed as an important national folk custom']]},
+  changfu:{name:'Sanxia Changfu Temple', place:'Sanxia District, New Taipei', yearNote:'founded', heritage:'New Taipei City monument', fromN:'Anxi, Quanzhou, Fujian', fromS:'Anxi', toS:'Sanjiaoyong (now Sanxia)', group:'Anxi people from Quanzhou',
+    story:'Anxi migrants brought their hometown’s Qingshui Zushi with them, settled along the riverbanks of Sanjiaoyong (today’s Sanxia), and founded the temple in 1769. Over two centuries it was rebuilt three times after earthquakes and war. The postwar rebuilding, led by the painter Li Mei-shu with many artists and craftsmen, earned it the nickname “Palace of Eastern Art.”',
+    timeline:[['1769','Founded by Anxi migrants in Sanjiaoyong'],['1833','Damaged by an earthquake; first rebuilding'],['1895','Burned by Japanese troops in the 1895 war; rebuilt in 1899'],['1947','The painter Li Mei-shu leads the third rebuilding'],['2018','Designated a New Taipei City monument']]},
+  guangfu:{name:'Xinzhuang Guangfu Temple', place:'Xinzhuang District, New Taipei', yearNote:'founded', heritage:'National monument', fromN:'Lintian Ancestral Temple, Jiexi, Chaozhou, Guangdong', fromS:'Jiexi', toS:'Xinzhuang', group:'migrants from Chaozhou, Guangdong (Hakka)',
+    story:'After settling in Xinzhuang, migrants from Chaozhou in Guangdong built Guangfu Temple in 1780 to worship the Three Mountain Kings of their hometown, Jiexi. It is a leading center of Chaozhou migrant faith in northern Taiwan, and it still holds a festival and harvest opera on the birthday of the King of Mount Du, keeping alive the Hakka custom of thanking the gods after the harvest.',
+    timeline:[['1780','Chaozhou migrants build the temple for the Three Mountain Kings'],['Today','National monument; the birthday festival and harvest opera are still held every year']]}
+};
+function BF(b, k){
+  if(LANG === 'en') return BEN[b.id][k];
+  return {name:b.name, place:b.place, yearNote:b.yearNote, heritage:b.heritage, fromN:b.from.n, fromS:b.from.s, toS:b.to.s, group:b.group, story:b.story, timeline:b.timeline, pray:b.pray}[k];
+}
+const bmInner = b => `<span class="bm-3d">3D</span><span class="bm-n">${BF(b, 'name')}</span>`;
+const STORE = [['台南市',120.25,23.05,1620,980],['高雄市',120.38,22.75,1460,1700],['屏東縣',120.55,22.45,1190,520],['彰化縣',120.50,24.03,1160,690],['台中市',120.68,24.18,1080,1850],['台北市',121.55,25.05,330,2010]];
+const REGIONS = [['北部',121.22,24.86],['中部',120.68,24.02],['南部',120.42,22.98],['東部',121.32,23.35]];
+function regionOf(p){ if(p.lng >= 121.1 && p.lat < 24.45) return '東部'; if(p.lat >= 24.45) return '北部'; if(p.lat >= 23.45) return '中部'; return '南部'; }
+
+/* 互動狀態 */
+let sel7 = 'mazu', year9 = 1800, dist10 = '萬華區';
+let EX_YEAR = 2020, EX_SEL = null, onExplorePick = null;
+
+/* ===== 廟宇積木（3D 故事與 3D 大廟共用） ===== */
+function TempleKit(withEdges){
+  const std = (c, r, m = 0) => new THREE.MeshStandardMaterial({color:c, roughness:r, metalness:m});
+  const M = {
+    wall:std(0xe9dcc4,.9), stone:std(0xbdb3a2,.95), red:std(0xa3221a,.55), redDark:std(0x6e1510,.6),
+    gold:std(0xd9a93e,.35,.55), ridge:std(0xf0e6d2,.7), jade:std(0x2f8f6b,.45), blue:std(0x2f5fa8,.45), bronze:std(0x5b4a35,.5,.6),
+    city:std(0xe8d8bd,.95), base:std(0xd9c6a6,1), tree:std(0xa7a07a,.95), trunk:std(0x6b4a2f,.95), water:std(0x4f86a3,.4,.1),
+    lantern:new THREE.MeshStandardMaterial({color:0xc4271c, emissive:0xff3b1f, emissiveIntensity:.6, roughness:.5})
+  };
+  const lineMat = new THREE.LineBasicMaterial({color:0x8a6a4c, transparent:true, opacity:.35});
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,.9)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64); const smokeTex = new THREE.CanvasTexture(c);
+  function mesh(geo, mat, px = 0, py = 0, pz = 0, edges = true){
+    const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.castShadow = true; m.receiveShadow = true;
+    if(withEdges && edges) m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 28), lineMat));
+    return m;
+  }
+  const box = (w, h, d, mat, px, py, pz, e) => mesh(new THREE.BoxGeometry(w, h, d), mat, px, py, pz, e);
+  const tube = (pts, r, mat) => mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), 48, r, 6, false), mat, 0, 0, 0, false);
+  const anchor = (grp, px, py, pz) => { const o = new THREE.Object3D(); o.position.set(px, py, pz); grp.add(o); return o; };
+  function roofGeo(L, half, rise, t = .28){
+    const sh = new THREE.Shape();
+    sh.moveTo(-half, 0); sh.quadraticCurveTo(-half*.42, rise*.28, 0, rise); sh.quadraticCurveTo(half*.42, rise*.28, half, 0);
+    sh.lineTo(half, -t); sh.quadraticCurveTo(half*.42, rise*.28 - t, 0, rise - t); sh.quadraticCurveTo(-half*.42, rise*.28 - t, -half, -t); sh.closePath();
+    const geo = new THREE.ExtrudeGeometry(sh, {depth:L, bevelEnabled:false, curveSegments:14});
+    geo.translate(0, 0, -L/2); geo.rotateY(Math.PI/2); return geo;
+  }
+  function hall(o){
+    const grp = new THREE.Group(), A = {}, porch = o.porch || 0;
+    grp.add(box(o.w, o.h, o.d, M.wall, 0, o.h/2, 0));
+    grp.add(box(o.w + .04, o.h*.22, o.d + .04, M.stone, 0, o.h*.11, 0, false));
+    if(o.cols){
+      const xs = [];
+      for(let i = 0; i < o.cols; i++) xs.push(-o.w/2 + .35 + i*(o.w - .7)/(o.cols - 1));
+      xs.forEach(px => grp.add(mesh(new THREE.CylinderGeometry(.2, .22, o.h, 12), M.red, px, o.h/2, o.d/2 + porch - .3)));
+      grp.add(box(o.w, .38, .38, M.redDark, 0, o.h - .19, o.d/2 + porch - .3));
+      if(o.dragonCols){
+        const inner = xs.slice().sort((a, b) => Math.abs(a) - Math.abs(b)).slice(0, 2);
+        inner.forEach((cx, j) => {
+          const pts = []; for(let i = 0; i <= 60; i++){ const t = i/60, a = t*Math.PI*5 + j*Math.PI; pts.push([cx + Math.cos(a)*.32, .3 + t*(o.h - .8), o.d/2 + porch - .3 + Math.sin(a)*.32]); }
+          grp.add(tube(pts, .085, j ? M.blue : M.jade));
+          grp.add(mesh(new THREE.SphereGeometry(.16, 10, 8), M.gold, ...pts[pts.length - 1], false));
+        });
+        A.longzhu = anchor(grp, inner[0], o.h*.55, o.d/2 + porch + .1);
+      }
+    }
+    if(o.doors){
+      const fz = o.d/2;
+      grp.add(box(o.w*.22, o.h*.66, .1, M.redDark, 0, o.h*.33, fz + .05));
+      if(o.doors === 'gods'){
+        [-1, 1].forEach(sg => grp.add(box(o.w*.075, o.h*.42, .05, M.gold, sg*o.w*.055, o.h*.36, fz + .12, false)));
+        A.menshen = anchor(grp, 0, o.h*.42, fz + .2);
+      }
+      if(o.w > 5) [-1, 1].forEach(sg => grp.add(box(o.w*.13, o.h*.52, .1, M.redDark, sg*o.w*.3, o.h*.26, fz + .05)));
+    }
+    const half = o.d/2 + porch + o.ov, L = o.w + o.ov*1.2;
+    grp.add(mesh(roofGeo(L, half, o.rise), o.roofMat, 0, o.h, 0));
+    [-1, 1].forEach(sg => grp.add(box(L, .14, .2, o.trimMat, 0, o.h - .2, sg*half, false)));
+    const ry = o.h + o.rise;
+    grp.add(box(L*.84, .4, .34, M.ridge, 0, ry + .02, 0));
+    A.front = anchor(grp, 0, o.h + .5, half);
+    if(o.yan){
+      [-1, 1].forEach(sg => { const x0 = sg*L*.42; [-.22, .22].forEach(zf => grp.add(tube([[x0, ry + .05, 0], [x0 + sg*.7, ry + .18, 0], [x0 + sg*1.2, ry + .55, zf*.5], [x0 + sg*1.45, ry + 1.2, zf]], .1, M.ridge))); });
+      A.yanwei = anchor(grp, -(L*.42 + 1.2), ry + .9, 0);
+    }
+    if(o.dragons){
+      grp.add(mesh(new THREE.CylinderGeometry(.08, .12, .4, 8), M.gold, 0, ry + .4, 0, false));
+      grp.add(mesh(new THREE.SphereGeometry(.26, 14, 10), M.gold, 0, ry + .75, 0, false));
+      [-1, 1].forEach(sg => {
+        const pts = []; for(let i = 0; i <= 14; i++){ const px = sg*(L*.38 - i*(L*.38 - .6)/14); pts.push([px, ry + .45 + .2*Math.sin(i*1.05), .12*Math.cos(i*1.3)]); }
+        grp.add(tube(pts, .085, sg < 0 ? M.jade : M.blue));
+        grp.add(mesh(new THREE.SphereGeometry(.15, 10, 8), sg < 0 ? M.jade : M.blue, ...pts[pts.length - 1], false));
+      });
+      A.jiannian = anchor(grp, 0, ry + 1, 0);
+    }
+    return {g:grp, A};
+  }
+  function tree(rootG, px, pz, r, sz){
+    rootG.add(mesh(new THREE.CylinderGeometry(.12, .16, 1.2, 6), M.trunk, px, .6, pz, false));
+    const t = mesh(new THREE.IcosahedronGeometry(sz, 0), M.tree, px, 1.3 + sz*.7, pz, false); t.rotation.set(r()*3, r()*3, 0); rootG.add(t);
+  }
+  function buildCity(rootG, seed, fp){
+    const r = mulberry32(seed), S = 100, half = 50, step = 16, riverX = 36;
+    rootG.add(box(S, 1.2, S, M.base, 0, -.6, 0, false));
+    const river = new THREE.Mesh(new THREE.PlaneGeometry(half - riverX, S), M.water);
+    river.rotation.x = -Math.PI/2; river.position.set((riverX + half)/2, .03, 0); river.receiveShadow = true; rootG.add(river);
+    rootG.add(box(.5, .45, S, M.stone, riverX - .25, .22, 0));
+    rootG.add(box(fp.x1 - fp.x0, .1, fp.z1 - fp.z0, M.stone, (fp.x0 + fp.x1)/2, .05, (fp.z0 + fp.z1)/2, false));
+    for(let gx = -half; gx < riverX; gx += step){
+      for(let gz = -half; gz < half; gz += step){
+        const bx0 = gx + 2.2, bx1 = Math.min(gx + step - 2.2, riverX - 2), bz0 = gz + 2.2, bz1 = gz + step - 2.2;
+        if(bx1 - bx0 < 4) continue;
+        if(bx1 > fp.x0 && bx0 < fp.x1 && bz1 > fp.z0 && bz0 < fp.z1) continue;
+        for(let row = 0; row < 2; row++){
+          const dz = (bz1 - bz0 - .8)/2, z0 = bz0 + .4 + row*dz, z1 = z0 + dz - .3;
+          let px = bx0 + .4;
+          while(px < bx1 - 1.6){
+            const w = Math.min(bx1 - .4 - px, 2.4 + r()*4), h = r() < .1 ? 6 + r()*9 : 2.2 + r()*3.6;
+            rootG.add(box(w - .25, h, z1 - z0, M.city, px + w/2, h/2, (z0 + z1)/2));
+            px += w;
+          }
+        }
+      }
+    }
+    for(let i = 0; i < 80; i++){
+      const along = -half + 3 + r()*(S - 6), line = -half + step*Math.floor(r()*6), side = r() < .5 ? -1.3 : 1.3, vertical = r() < .5;
+      const px = vertical ? line + side : along, pz = vertical ? along : line + side;
+      if(px > riverX - 1.5 || Math.abs(px) > half - 1 || Math.abs(pz) > half - 1) continue;
+      if(px > fp.x0 - .5 && px < fp.x1 + .5 && pz > fp.z0 - .5 && pz < fp.z1 + .5) continue;
+      tree(rootG, px, pz, r, .8 + r()*.6);
+    }
+    [[fp.x0 + 1.2, fp.z1 - 1.2], [fp.x1 - 1.2, fp.z1 - 1.2], [fp.x0 + 1.2, fp.z1 - 4.5], [fp.x1 - 1.2, fp.z1 - 4.5]].forEach(([px, pz]) => tree(rootG, px, pz, r, 1.2));
+  }
+  function buildTemple(cfg, opts = {}){
+    const rootG = new THREE.Group(), A = {}, lanterns = [];
+    const roofMat = std(cfg.roof, .7), trimMat = std(cfg.trim, .5);
+    const base = {roofMat, trimMat}, P = .5, dF = 4.6, porch = 1.6, court = 5.5;
+    const fr = hall({...base, w:cfg.wc, d:dF, h:cfg.hc, rise:2.2, ov:.9, porch, cols:cfg.cols, dragonCols:true, doors:'gods', yan:true, dragons:true});
+    fr.g.position.set(0, P, 0); rootG.add(fr.g);
+    Object.assign(A, {sanchuan:fr.A.front, yanwei:fr.A.yanwei, jiannian:fr.A.jiannian, longzhu:fr.A.longzhu, menshen:fr.A.menshen});
+    if(cfg.ws) [-1, 1].forEach(sg => { const h = hall({...base, w:cfg.ws, d:dF, h:cfg.hs, rise:1.7, ov:.7, porch, cols:2, doors:'plain', yan:true}); h.g.position.set(sg*(cfg.wc/2 + cfg.ws/2), P, 0); rootG.add(h.g); });
+    const zM = -(dF/2 + court + cfg.dm/2);
+    const m = hall({...base, w:cfg.wm, d:cfg.dm, h:cfg.hm, rise:2.8, ov:1.1, porch:1.8, cols:6, doors:'plain', yan:true, dragons:true});
+    m.g.position.set(0, P, zM); rootG.add(m.g); A.zhengdian = m.A.front;
+    const frontW = cfg.wc + 2*cfg.ws, xc = Math.max(1.4, Math.min(frontW, cfg.wm)/2 - 1.1);
+    [-1, 1].forEach(sg => { const k = hall({...base, w:court + 1, d:2.2, h:3, rise:1.1, ov:.4}); k.g.rotation.y = Math.PI/2; k.g.position.set(sg*xc, P, -(dF/2 + court/2)); rootG.add(k.g); });
+    const zFront = dF/2 + porch + 1.2, zBack = zM - cfg.dm/2 - 1.6, pw = Math.max(frontW, cfg.wm) + 3;
+    rootG.add(box(pw, P, zFront - zBack, M.stone, 0, P/2, (zFront + zBack)/2));
+    for(let i = 0; i < 3; i++) rootG.add(box(cfg.wc*.8, P*(3 - i)/3, .5, M.stone, 0, P*(3 - i)/6, zFront + .25 + i*.5));
+    const cz = zFront + 6.5, cg = new THREE.Group(); cg.position.set(0, 0, cz);
+    cg.add(mesh(new THREE.CylinderGeometry(.95, .8, 1.3, 20), M.bronze, 0, 1.15, 0, false));
+    cg.add(mesh(new THREE.TorusGeometry(.95, .08, 8, 24), M.bronze, 0, 1.8, 0, false).rotateX(Math.PI/2));
+    for(let i = 0; i < 3; i++){ const a = i*Math.PI*2/3; cg.add(mesh(new THREE.CylinderGeometry(.09, .12, .6, 8), M.bronze, Math.cos(a)*.6, .3, Math.sin(a)*.6, false)); }
+    cg.add(mesh(new THREE.CylinderGeometry(.4, .7, .5, 16), M.bronze, 0, 2.1, 0, false));
+    rootG.add(cg); A.censer = anchor(rootG, 0, 2.6, cz);
+    let smoke = null;
+    if(opts.smoke !== false){
+      const n = 60, pos = new Float32Array(n*3), seeds = [];
+      for(let i = 0; i < n; i++){ seeds.push(Math.random()); pos[i*3 + 1] = 2.4 + Math.random()*4; pos[i*3 + 2] = cz; }
+      const sgeo = new THREE.BufferGeometry(); sgeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      smoke = new THREE.Points(sgeo, new THREE.PointsMaterial({size:1.1, map:smokeTex, transparent:true, opacity:.3, depthWrite:false, color:0xf3eadb}));
+      smoke.userData = {seeds, cz}; rootG.add(smoke);
+    }
+    const lx = cfg.wc*.3, ly = P + cfg.hc - .1, lz = dF/2 + porch + .35;
+    [-1, 1].forEach(sg => {
+      const pivot = new THREE.Group(); pivot.position.set(sg*lx, ly, lz);
+      pivot.add(mesh(new THREE.CylinderGeometry(.02, .02, .5, 4), M.redDark, 0, -.25, 0, false));
+      const body = mesh(new THREE.SphereGeometry(.42, 16, 12), M.lantern, 0, -.85, 0, false); body.scale.set(1, 1.25, 1); pivot.add(body);
+      pivot.add(mesh(new THREE.CylinderGeometry(.18, .18, .1, 10), M.gold, 0, -.33, 0, false));
+      pivot.add(mesh(new THREE.CylinderGeometry(.18, .18, .1, 10), M.gold, 0, -1.37, 0, false));
+      rootG.add(pivot); lanterns.push(pivot);
+    });
+    return {group:rootG, A, lanterns, smoke, mats:[roofMat, trimMat], lamps:[[-lx, ly - .9, lz + .4], [lx, ly - .9, lz + .4]], fp:{pw, zBack, cz, zFront}};
+  }
+  function dispose(obj, mats){ obj.traverse(o => { if(o.geometry) o.geometry.dispose(); }); (mats || []).forEach(m => m.dispose()); }
+  return {M, lineMat, std, buildTemple, buildCity, dispose};
+}
+
+/* ===== 第一到四章：捲動驅動的 3D 場景 ===== */
+const S3 = HAS3D ? (function(){
+  const stage = $('stage3d'), canvas = $('gl'), labelsEl = $('labels'), bmLayer = $('bmStory'), legendEl = $('legend'), veil = $('veil');
+  let renderer;
+  try{ renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'}); }
+  catch(e){ stage.classList.add('nogl'); veil.classList.add('done'); return null; }
+  const V3 = THREE.Vector3;
+  const mob = isMobile();
+  renderer.setPixelRatio(Math.min(mob ? 1.5 : 2, devicePixelRatio || 1));
+  renderer.shadowMap.enabled = !mob;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(32, 1, .01, 500);
+  scene.fog = new THREE.Fog(0x120b08, 40, 160);
+
+  /* 座標：經緯度 → 世界座標（1 度 ≈ 10 單位） */
+  const K = 10, L0 = 120.9, A0 = 23.7, LAND = .3;
+  const X = lng => (lng - L0)*COS*K, Z = lat => (A0 - lat)*K;
+  const unX = x => x/(COS*K) + L0, unZ = z => A0 - z/K;
+  function segD(px, py, ax, ay, bx, by){ const dx = bx - ax, dy = by - ay, l = dx*dx + dy*dy; let t = l ? ((px - ax)*dx + (py - ay)*dy)/l : 0; t = clamp(t, 0, 1); const qx = ax + t*dx - px, qy = ay + t*dy - py; return Math.sqrt(qx*qx + qy*qy); }
+  function lineD(lng, lat, pts, closed){ let m = 1e9; const n = pts.length, px = lng*COS; for(let i = 0; i < (closed ? n : n - 1); i++){ const a = pts[i], b = pts[(i + 1)%n]; const d = segD(px, lat, a[0]*COS, a[1], b[0]*COS, b[1]); if(d < m) m = d; } return m; }
+  const bump = (lng, lat, cx, cy, r) => { const dx = (lng - cx)*COS, dy = lat - cy; return Math.exp(-(dx*dx + dy*dy)/(r*r)); };
+  const nz = (lng, lat) => Math.sin(lng*23.1 + lat*7.3)*.5 + Math.sin(lng*51.7 - lat*43.9)*.3 + Math.sin(lng*97.3 + lat*111.1)*.2;
+  const SPINE = [[121.72,24.86],[121.45,24.45],[121.2,23.95],[121.02,23.45],[120.9,22.9],[120.82,22.3]];
+  const COASTR = [[121.55,24.0],[121.42,23.55],[121.3,23.15],[121.15,22.85]];
+  const CNCOAST = CN.slice(0, -1);
+  const inTW = (lng, lat) => d3.polygonContains(TW, [lng, lat]);
+  const inCN = (lng, lat) => d3.polygonContains(CN, [lng, lat]);
+  function reliefTW(lng, lat){
+    const d = lineD(lng, lat, SPINE, false);
+    const taper = (1 - .55*smooth(24.4, 24.95, lat))*(1 - .5*smooth(22.6, 22.05, lat));
+    let h = 1.5*Math.exp(-((d/.23)**2))*taper + .26*Math.exp(-((d/.5)**2));
+    h += .55*bump(lng, lat, 120.96, 23.47, .11) + .4*bump(lng, lat, 121.23, 24.38, .1);
+    h += .38*Math.exp(-((lineD(lng, lat, COASTR, false)/.05)**2));
+    h += .3*bump(lng, lat, 121.56, 25.18, .05) + .12*bump(lng, lat, 121.37, 25.07, .06) + .16*bump(lng, lat, 121.57, 24.955, .05) + .14*bump(lng, lat, 121.65, 25.06, .045) + .22*bump(lng, lat, 121.78, 25.0, .07);
+    h *= .82 + .18*nz(lng*1.3, lat*1.3) + .08*nz(lng*4.1, lat*3.7);
+    const bd = Math.hypot((lng - 121.5)*COS, (lat - 25.045)*1.2);
+    h *= .04 + .96*smooth(.05, .095, bd);
+    return Math.max(0, h)*smooth(0, .045, lineD(lng, lat, TW, true));
+  }
+  function reliefCN(lng, lat){
+    const c = lineD(lng, lat, CNCOAST, false);
+    return (.12 + .55*smooth(.15, 1.6, c))*(.55 + .45*nz(lng*1.7, lat*1.9))*smooth(0, .08, c);
+  }
+  function inIslet(lng, lat){ return ISLETS.some(s => ((lng - s[0])/s[2])**2 + ((lat - s[1])/s[3])**2 < 1); }
+  function groundY(lng, lat){
+    if(inTW(lng, lat)) return LAND + reliefTW(lng, lat);
+    if(inIslet(lng, lat)) return LAND;
+    if(inCN(lng, lat)) return LAND + reliefCN(lng, lat);
+    return 0;
+  }
+
+  /* 光線 */
+  const hemi = new THREE.HemisphereLight(0xfff3e0, 0x9a4a2c, .7); scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffe2b8, 1.1); sun.castShadow = !mob;
+  sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -.0005; sun.shadow.normalBias = .02;
+  scene.add(sun); scene.add(sun.target);
+  const SUNDIR = new V3(-.55, 1, -.45).normalize();
+
+  /* 海、經緯線 */
+  /* 海：朱紅底＋青海波紋＋紙紋 */
+  function seaTexture(){
+    const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d');
+    x.fillStyle = '#d4d4d4'; x.fillRect(0, 0, 512, 512);
+    x.strokeStyle = 'rgba(255,248,232,.85)'; x.lineWidth = 2;
+    const R = 32;
+    for(let row = -1; row < 18; row++) for(let col = -1; col < 10; col++){
+      const cx = col*R*2 + (row%2 ? R : 0), cy = row*R*.5*1.0;
+      for(let k = 4; k >= 1; k--){ x.beginPath(); x.arc(cx, cy + R, R*k/4, Math.PI, 2*Math.PI); x.fillStyle = '#d4d4d4'; x.fill(); x.stroke(); }
+    }
+    const img = x.getImageData(0, 0, 512, 512), d = img.data;
+    for(let i = 0; i < d.length; i += 4){ const n = (Math.random() - .5)*22; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
+    x.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(70, 70); t.anisotropy = 4; return t;
+  }
+  const seaMat = new THREE.MeshStandardMaterial({color:0xae4b2a, roughness:1});
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), seaMat); sea.rotation.x = -Math.PI/2; sea.receiveShadow = true; scene.add(sea);
+  const gratPts = [];
+  for(let lng = 113; lng <= 124; lng++) gratPts.push(X(lng), .004, Z(20), X(lng), .004, Z(29));
+  for(let lat = 20; lat <= 29; lat++) gratPts.push(X(113), .004, Z(lat), X(124), .004, Z(lat));
+  const gratGeo = new THREE.BufferGeometry(); gratGeo.setAttribute('position', new THREE.Float32BufferAttribute(gratPts, 3));
+  const gratMat = new THREE.LineBasicMaterial({color:0xf6e9d3, transparent:true, opacity:.16});
+  scene.add(new THREE.LineSegments(gratGeo, gratMat));
+
+  /* 陸地：擠出底座＋地形起伏 */
+  const capMat = new THREE.MeshStandardMaterial({color:0xf3e3c7, roughness:.95});
+  const sideMat = new THREE.MeshStandardMaterial({color:0x8e3a20, roughness:1});
+  const cnCapMat = new THREE.MeshStandardMaterial({color:0xe2b38c, roughness:.95});
+  function extrudePoly(pts, mats){
+    const sh = new THREE.Shape(pts.map(p => new THREE.Vector2(X(p[0]), -Z(p[1]))));
+    const geo = new THREE.ExtrudeGeometry(sh, {depth:LAND, bevelEnabled:false});
+    geo.rotateX(-Math.PI/2);
+    const m = new THREE.Mesh(geo, mats); m.receiveShadow = true; m.castShadow = true; scene.add(m); return m;
+  }
+  extrudePoly(TW, [capMat, sideMat]);
+  extrudePoly(CN, [cnCapMat, sideMat]);
+  ISLETS.forEach(s => { const pts = d3.range(0, 24).map(i => { const a = i/24*Math.PI*2; return [s[0] + Math.cos(a)*s[2], s[1] + Math.sin(a)*s[3]]; }); extrudePoly(pts, [capMat, sideMat]); });
+  /* 山水配色：平原沙金，山體轉為水墨白，並畫出層層皴紋 */
+  const RAMP = [[0,0xf3e3c7],[.1,0xecd5b0],[.32,0xf1e5d0],[.7,0xf7efe2],[1.7,0xfcf8f0]].map(r => [r[0], new THREE.Color(r[1])]);
+  const PALE = new THREE.Color(0xe2b38c), STRATA = new THREE.Color(0xc0603a);
+  function ramp(h, c, pale){
+    let i = 0; while(i < RAMP.length - 2 && h > RAMP[i + 1][0]) i++;
+    const t = clamp((h - RAMP[i][0])/(RAMP[i + 1][0] - RAMP[i][0]), 0, 1);
+    c.copy(RAMP[i][1]).lerp(RAMP[i + 1][1], t);
+    if(h > .12){ const f = (h*13)%1; c.lerp(STRATA, smooth(.72, .98, f)*.35*smooth(.12, .4, h)); }
+    if(pale) c.lerp(PALE, .55);
+  }
+  const reliefMat = new THREE.MeshStandardMaterial({vertexColors:true, roughness:.95});
+  function reliefMesh(b, step, inside, relief, skip, yOff, pale){
+    const nx = Math.round((b[2] - b[0])/step) + 1, ny = Math.round((b[3] - b[1])/step) + 1;
+    const pos = new Float32Array(nx*ny*3), colA = new Float32Array(nx*ny*3), ins = new Uint8Array(nx*ny), c = new THREE.Color();
+    for(let j = 0; j < ny; j++) for(let i = 0; i < nx; i++){
+      const lng = b[0] + i*step, lat = b[1] + j*step, k = j*nx + i, isIn = inside(lng, lat) ? 1 : 0;
+      ins[k] = isIn; const h = isIn ? relief(lng, lat) : 0;
+      pos[k*3] = X(lng); pos[k*3 + 1] = LAND + h + yOff; pos[k*3 + 2] = Z(lat);
+      ramp(h, c, pale); colA[k*3] = c.r; colA[k*3 + 1] = c.g; colA[k*3 + 2] = c.b;
+    }
+    const idx = [];
+    for(let j = 0; j < ny - 1; j++) for(let i = 0; i < nx - 1; i++){
+      const a = j*nx + i, b1 = a + 1, c1 = a + nx, d = c1 + 1;
+      if(!(ins[a] && ins[b1] && ins[c1] && ins[d])) continue;
+      if(skip && skip(b[0] + (i + .5)*step, b[1] + (j + .5)*step)) continue;
+      idx.push(a, b1, c1, b1, d, c1);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colA, 3));
+    geo.setIndex(idx); geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, reliefMat); m.receiveShadow = true; m.castShadow = true; scene.add(m); return m;
+  }
+  const BX = [121.31, 24.86, 121.70, 25.24];
+  reliefMesh([119.95, 21.85, 122.10, 25.35], mob ? .025 : .016, inTW, reliefTW, (lng, lat) => lng > BX[0] + .01 && lng < BX[2] - .01 && lat > BX[1] + .01 && lat < BX[3] - .01, .002, false);
+  reliefMesh(BX, mob ? .004 : .0028, inTW, reliefTW, null, .004, false);
+  reliefMesh([113.5, 22.4, 120.6, 27.6], .06, inCN, reliefCN, null, .002, true);
+
+  /* 河流（盆地） */
+  const riverMat = new THREE.MeshBasicMaterial({color:0x3f7896, transparent:true, opacity:0, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-4});
+  RIVERS.forEach(rv => {
+    const pts = [];
+    for(let i = 0; i < rv.pts.length - 1; i++){ const a = rv.pts[i], b = rv.pts[i + 1]; for(let s = 0; s < 6; s++){ const t = s/6; pts.push([lerp(a[0], b[0], t), lerp(a[1], b[1], t)]); } }
+    pts.push(rv.pts[rv.pts.length - 1]);
+    const pos = [], idx = [], w = rv.name === '淡水河' ? .016 : .011;
+    pts.forEach((p, i) => {
+      const q = pts[Math.min(i + 1, pts.length - 1)], o = pts[Math.max(i - 1, 0)];
+      let dx = X(q[0]) - X(o[0]), dz = Z(q[1]) - Z(o[1]); const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
+      const y = groundY(p[0], p[1]) + .006, cx = X(p[0]), cz = Z(p[1]);
+      pos.push(cx - dz*w, y, cz + dx*w, cx + dz*w, y, cz - dx*w);
+      if(i < pts.length - 1){ const k = i*2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
+    });
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx);
+    const m = new THREE.Mesh(geo, riverMat); m.renderOrder = 2; scene.add(m);
+  });
+
+  /* 廟宇光點 */
+  const N = TEMPLES.length;
+  const pPos = new Float32Array(N*3), pCol = new Float32Array(N*3), pAlpha = new Float32Array(N), pSize = new Float32Array(N);
+  const tCol = new Float32Array(N*3), tAlpha = new Float32Array(N), tSize = new Float32Array(N);
+  TEMPLES.forEach((p, i) => {
+    p.gy = groundY(p.lng, p.lat);
+    pPos[i*3] = X(p.lng); pPos[i*3 + 1] = p.gy + .04; pPos[i*3 + 2] = Z(p.lat);
+    pCol.set([.95, .77, .36], i*3); tCol.set([.95, .77, .36], i*3);
+    pAlpha[i] = 0; tAlpha[i] = .9; pSize[i] = tSize[i] = .11;
+  });
+  const pGeo = new THREE.BufferGeometry();
+  pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+  pGeo.setAttribute('aColor', new THREE.BufferAttribute(pCol, 3));
+  pGeo.setAttribute('aAlpha', new THREE.BufferAttribute(pAlpha, 1));
+  pGeo.setAttribute('aSize', new THREE.BufferAttribute(pSize, 1));
+  const pMat = new THREE.ShaderMaterial({
+    uniforms:{uScale:{value:800}, uGlow:{value:1}},
+    vertexShader:`attribute vec3 aColor; attribute float aAlpha; attribute float aSize; uniform float uScale; varying vec3 vColor; varying float vAlpha;
+      void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); gl_Position = projectionMatrix*mv; gl_PointSize = clamp(aSize*uScale/-mv.z, 2.0, 15.0); vColor = aColor; vAlpha = aAlpha; }`,
+    fragmentShader:`uniform float uGlow; varying vec3 vColor; varying float vAlpha;
+      void main(){ vec2 c = gl_PointCoord - .5; float d = length(c); float core = smoothstep(.5, .3, d); float glow = exp(-d*d*12.0)*uGlow;
+        float a = max(core*(1.0 - uGlow*.35), glow)*vAlpha; if(a < .01) discard; gl_FragColor = vec4(vColor*(1.0 + uGlow*.5*(1.0 - d*2.0)), a); }`,
+    transparent:true, depthWrite:false
+  });
+  const points = new THREE.Points(pGeo, pMat); points.frustumCulled = false; points.renderOrder = 3; scene.add(points);
+
+  /* 盆地廟宇：小廟（牆身＋依神明上色的屋頂） */
+  const tBaseGeo = new THREE.BoxGeometry(1, 1, 1); tBaseGeo.translate(0, .5, 0);
+  const tRoofGeo = new THREE.ConeGeometry(.72, 1, 4); tRoofGeo.rotateY(Math.PI/4); tRoofGeo.translate(0, .5, 0);
+  const tBase = new THREE.InstancedMesh(tBaseGeo, new THREE.MeshStandardMaterial({color:0xf4e9d6, roughness:.8}), BASIN.length);
+  const pillars = new THREE.InstancedMesh(tRoofGeo, new THREE.MeshStandardMaterial({roughness:.5}), BASIN.length);
+  [tBase, pillars].forEach(m => { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; scene.add(m); });
+  const plH = new Float32Array(BASIN.length), plT = new Float32Array(BASIN.length);
+  const plC = BASIN.map(() => new THREE.Color(0xb07f22)), plTC = BASIN.map(() => new THREE.Color(0xb07f22));
+  BASIN.forEach((p, i) => { p.bi = i; p.rot = (p.addrNo%7)*.2; pillars.setColorAt(i, plC[i]); });
+  const dummy = new THREE.Object3D();
+  const TS = .011;  // 廟宇尺寸（誇大以便辨識）
+
+  /* 盆地城市量體（示意，正式版改用真實建物資料） */
+  const cityMat = new THREE.MeshStandardMaterial({color:0xf3e8d4, roughness:.9});
+  const CITY = [];
+  (function genCity(){
+    const r = mulberry32(777), step = mob ? .0017 : .0012, rd = .0028;
+    const nearRiver = (lng, lat) => RIVERS.some(rv => lineD(lng, lat, rv.pts, false) < rd);
+    for(let lng = 121.40; lng < 121.62; lng += step){
+      for(let lat = 24.955; lat < 25.145; lat += step){
+        const jl = lng + (r() - .5)*step*.5, ja = lat + (r() - .5)*step*.5;
+        if(!inTW(jl, ja) || reliefTW(jl, ja) > .02 || nearRiver(jl, ja)) continue;
+        if(BIG.some(b => Math.abs(b.lng - jl) < .0035 && Math.abs(b.lat - ja) < .0035)) continue;
+        let best = null, bd = 9;
+        SETTLE.forEach(se => { const d = Math.hypot((se.lng - jl)*COS, se.lat - ja); if(d < bd){ bd = d; best = se; } });
+        const dens = .12 + .82*Math.exp(-((bd/.03)**2));
+        if(r() > dens) continue;
+        const east = jl > 121.535 && ja < 25.065;
+        const y = Math.round(clamp(best.y[0] + 60 + bd/.035*110 + (r() - .5)*60, 1760, 2015));
+        const h = (east ? .014 + r()*.03 : .006 + r()*.012)*(y > 1960 ? 1.4 : 1);
+        CITY.push({lng:jl, lat:ja, w:.0045 + r()*.005, d:.0045 + r()*.005, h, y, rot:(r() - .5)*.3, gy:groundY(jl, ja)});
+      }
+    }
+    CITY.push({lng:121.5645, lat:25.0340, w:.012, d:.012, h:.17, y:2004, rot:Math.PI/4, gy:groundY(121.5645, 25.034), tower:true});
+  })();
+  const city = new THREE.InstancedMesh(tBaseGeo, cityMat, CITY.length);
+  city.castShadow = true; city.receiveShadow = true; city.frustumCulled = false; city.visible = false; scene.add(city);
+  const tint = new THREE.Color();
+  CITY.forEach((b, i) => { tint.setHSL(.08 + (i%5)*.006, .35, .86 - (i%7)*.018); if(b.tower) tint.setHex(0x9fb7a6); city.setColorAt(i, tint); });
+  const cH = new Float32Array(CITY.length), cT = new Float32Array(CITY.length);
+  let cityDirty = true;
+
+  /* 遷移弧線 */
+  const ARCS = [];
+  DEITIES.filter(d => d.origin_lng != null).forEach(d => {
+    const o = new V3(X(d.origin_lng), groundY(d.origin_lng, d.origin_lat) + .15, Z(d.origin_lat));
+    CLUSTERS[d.deity_id].slice().sort((a, b) => b[3] - a[3]).slice(0, 4).forEach((c, j) => {
+      const e = new V3(X(c[0]), groundY(c[0], c[1]) + .08, Z(c[1]));
+      const len = o.distanceTo(e), mid = o.clone().add(e).multiplyScalar(.5); mid.y += len*.2 + 1.2;
+      const curve = new THREE.QuadraticBezierCurve3(o, mid, e);
+      const geo = new THREE.TubeGeometry(curve, 90, .065, 6, false);
+      const mat = new THREE.MeshBasicMaterial({color:new THREE.Color(d.color), transparent:true, opacity:.95});
+      const m = new THREE.Mesh(geo, mat); m.visible = false; m.renderOrder = 4; scene.add(m);
+      const full = geo.index.count;
+      ARCS.push({d:d.deity_id, curve, m, mat, full, prog:0, want:0, delay:0, j});
+    });
+  });
+
+  /* 祖廟光柱 */
+  const ORIG = [];
+  DEITIES.filter(d => d.origin_lng != null).forEach(d => {
+    const grp = new THREE.Group(); const y = groundY(d.origin_lng, d.origin_lat);
+    grp.position.set(X(d.origin_lng), y, Z(d.origin_lat));
+    const baseM = new THREE.Mesh(new THREE.CylinderGeometry(.32, .38, .14, 16), new THREE.MeshStandardMaterial({color:0xd9a93e, roughness:.4, metalness:.5}));
+    baseM.position.y = .07; grp.add(baseM);
+    const hut = new THREE.Mesh(new THREE.BoxGeometry(.32, .22, .26), new THREE.MeshStandardMaterial({color:0xe9dcc4, roughness:.9})); hut.position.y = .25; grp.add(hut);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(.3, .2, 4), new THREE.MeshStandardMaterial({color:0xa3221a, roughness:.6})); roof.position.y = .46; roof.rotation.y = Math.PI/4; grp.add(roof);
+    const beamMat = new THREE.MeshBasicMaterial({color:new THREE.Color(d.color), transparent:true, opacity:.35, depthWrite:false, blending:THREE.AdditiveBlending});
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(.06, .14, 5, 12, 1, true), beamMat); beam.position.y = 2.9; grp.add(beam);
+    grp.traverse(o => { if(o.isMesh && o !== beam) o.castShadow = true; });
+    grp.scale.setScalar(.001); scene.add(grp);
+    ORIG.push({d:d.deity_id, grp, beamMat, s:0, want:0});
+  });
+
+  /* 帆船 */
+  function buildBoat(){
+    const grp = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({color:0x6b4126, roughness:.8});
+    const sailMat = new THREE.MeshStandardMaterial({color:0xa83a22, roughness:.85, side:THREE.DoubleSide});
+    const hs = new THREE.Shape();
+    hs.moveTo(-.62, .26); hs.quadraticCurveTo(-.55, -.02, 0, -.05); hs.quadraticCurveTo(.48, -.03, .64, .2); hs.lineTo(.5, .17); hs.lineTo(-.5, .2); hs.closePath();
+    const hull = new THREE.Mesh(new THREE.ExtrudeGeometry(hs, {depth:.3, bevelEnabled:false}), wood); hull.geometry.translate(0, 0, -.15); grp.add(hull);
+    [[-.06, .95, .55], [.3, .7, .4], [-.42, .55, .3]].forEach(([mx, mh, sw]) => {
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(.012, .015, mh, 6), wood); mast.position.set(mx, .18 + mh/2, 0); grp.add(mast);
+      const sail = new THREE.Mesh(new THREE.PlaneGeometry(sw, mh*.75), sailMat); sail.position.set(mx + sw*.08, .3 + mh*.45, .02); sail.rotation.y = Math.PI/2 - .35; grp.add(sail);
+      for(let b = 0; b < 4; b++){ const bt = new THREE.Mesh(new THREE.BoxGeometry(.008, .008, sw*1.02), wood); bt.position.set(mx + sw*.08, .3 + mh*.12 + b*mh*.18, .02); bt.rotation.y = -.35; grp.add(bt); }
+    });
+    grp.traverse(o => { if(o.isMesh) o.castShadow = true; });
+    grp.scale.setScalar(.001); scene.add(grp);
+    return grp;
+  }
+  const boat = buildBoat(); let boatS = 0, boatWant = 0, boatT = 0, boatArc = null;
+
+  /* 縮小版大廟 */
+  const kit = TempleKit(false);
+  const MINIS = BIG.map(b => {
+    const built = kit.buildTemple(b, {smoke:false});
+    built.group.position.z = -(built.fp.zBack + built.fp.cz)/2;
+    const wrap = new THREE.Group(); wrap.add(built.group);
+    wrap.position.set(X(b.lng), groundY(b.lng, b.lat), Z(b.lat));
+    wrap.scale.setScalar(.0001); wrap.visible = false; scene.add(wrap);
+    return {b, wrap, s:0, want:0, top:.08};
+  });
+  const bmEls = MINIS.map(mn => {
+    const el = document.createElement('button'); el.type = 'button'; el.className = 'bm off'; el.dataset.id = mn.b.id;
+    el.setAttribute('aria-label', T('進入 3D：', 'Enter 3D: ') + BF(mn.b, 'name'));
+    el.innerHTML = bmInner(mn.b);
+    bmLayer.appendChild(el); return el;
+  });
+  bmLayer.addEventListener('click', e => { const b = e.target.closest('.bm'); if(b && window.T3) window.T3.open(b.dataset.id); });
+
+  /* 1853 路線 */
+  const RP = [[121.499,25.037],[121.503,25.052],[121.509,25.066],[121.515,25.072],[121.5135,25.064],[121.5101,25.0558]];
+  const routeCurve = new THREE.CatmullRomCurve3(RP.map((p, i) => { const hump = (i === 0 || i === RP.length - 1 || i === 3) ? .012 : .03; return new V3(X(p[0]), groundY(p[0], p[1]) + hump, Z(p[1])); }), false, 'centripetal');
+  const routeGeo = new THREE.TubeGeometry(routeCurve, 160, .0045, 6, false);
+  const routeMat = new THREE.MeshBasicMaterial({color:0xc2362b, transparent:true, opacity:.95});
+  const route = new THREE.Mesh(routeGeo, routeMat); route.visible = false; route.renderOrder = 5; scene.add(route);
+  const statue = new THREE.Mesh(new THREE.SphereGeometry(.009, 16, 12), new THREE.MeshStandardMaterial({color:0xefc86a, emissive:0xd9a93e, emissiveIntensity:.8, metalness:.4, roughness:.3}));
+  statue.visible = false; scene.add(statue);
+  let routeProg = 0, routeWant = 0, routeT0 = 0;
+
+  /* 第三章：光圈 */
+  const ringMat = new THREE.MeshBasicMaterial({color:0x9e2018, transparent:true, opacity:0});
+  let ring = null;
+  const haloMat = new THREE.MeshBasicMaterial({color:0xefc86a, transparent:true, opacity:0});
+  const halos = [0, 1].map(() => { const h = new THREE.Mesh(new THREE.TorusGeometry(.014, .0025, 8, 28), haloMat); h.rotation.x = -Math.PI/2; scene.add(h); return h; });
+  let haloPicks = [];
+  function buildRing(){
+    if(ring){ scene.remove(ring); ring.geometry.dispose(); }
+    const d = DIST_BY_NAME[dist10], R = 1.5/111;
+    const pts = d3.range(0, 97).map(i => { const a = i/96*Math.PI*2, lng = d.lng + Math.cos(a)*R/COS, lat = d.lat + Math.sin(a)*R; return new V3(X(lng), groundY(lng, lat) + .006, Z(lat)); });
+    ring = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 160, .0022, 6, true), ringMat); ring.renderOrder = 5; scene.add(ring);
+  }
+  buildRing();
+
+  /* 第四章：區域柱與便利商店柱 */
+  const colGroups = [];
+  const regData = REGIONS.map(r => {
+    const ps = TEMPLES.filter(p => regionOf(p) === r[0]);
+    return {name:r[0], lng:r[1], lat:r[2], n:ps.length, shares:DEITIES.map(d => ({id:d.deity_id, n:ps.filter(p => p.deity_id === d.deity_id).length}))};
+  });
+  const maxReg = d3.max(regData, r => r.n);
+  regData.forEach(r => {
+    const grp = new THREE.Group(); grp.position.set(X(r.lng), groundY(r.lng, r.lat), Z(r.lat));
+    const H = 5.2*r.n/maxReg; let y = 0;
+    r.shares.forEach(s => {
+      if(!s.n) return; const h = H*s.n/r.n;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1.25, h, 1.25), new THREE.MeshStandardMaterial({color:new THREE.Color(DMAP[s.id].color), roughness:.6}));
+      m.position.y = y + h/2; m.castShadow = true; m.userData.id = s.id; grp.add(m); y += h;
+    });
+    r.H = H; grp.scale.set(1, .0001, 1); grp.visible = false; scene.add(grp);
+    colGroups.push({kind:'reg', grp, s:0, want:0, delay:colGroups.length*.12});
+  });
+  const storeData = STORE.map(s => ({name:s[0], lng:s[1], lat:s[2], t:s[3], c:s[4]}));
+  storeData.forEach((s, i) => {
+    const grp = new THREE.Group(); grp.position.set(X(s.lng), groundY(s.lng, s.lat), Z(s.lat));
+    const hT = 6.2*s.t/2100, hC = 6.2*s.c/2100;
+    const a = new THREE.Mesh(new THREE.BoxGeometry(.75, hT, .75), new THREE.MeshStandardMaterial({color:0xa3221a, roughness:.5})); a.position.set(-.45, hT/2, 0); a.castShadow = true; grp.add(a);
+    const b = new THREE.Mesh(new THREE.BoxGeometry(.75, hC, .75), new THREE.MeshStandardMaterial({color:0x8a6a4c, roughness:.7})); b.position.set(.45, hC/2, 0); b.castShadow = true; grp.add(b);
+    s.H = Math.max(hT, hC); grp.scale.set(1, .0001, 1); grp.visible = false; scene.add(grp);
+    colGroups.push({kind:'store', grp, s:0, want:0, delay:i*.1});
+  });
+
+  /* 文字標籤 */
+  const LBL = [];
+  function addLabel(html, lng, lat, yAdd, cls, groups, extra){
+    const hf = typeof html === 'function' ? html : () => html;
+    const el = document.createElement('div'); el.className = 'lb ' + (cls || ''); el.innerHTML = hf(); labelsEl.appendChild(el);
+    const L = Object.assign({el, hf, p:new V3(X(lng), groundY(lng, lat) + yAdd, Z(lat)), groups, on:false}, extra || {});
+    LBL.push(L); return L;
+  }
+  addLabel(() => T('台灣海峽', 'Taiwan Strait'), 119.7, 24.0, .2, 'big', ['strait']);
+  addLabel(() => T('福建', 'Fujian'), 117.6, 25.6, .8, 'big', ['strait']);
+  addLabel(() => T('廣東', 'Guangdong'), 115.4, 23.9, .8, 'big', ['strait']);
+  addLabel(() => T('台灣', 'Taiwan'), 120.95, 23.8, 2.2, 'big', ['strait']);
+  DEITIES.filter(d => d.origin_lng != null).forEach(d => addLabel(() => `${shortName(d)}<small>${DF(d, 'origin_short')}</small>`, d.origin_lng, d.origin_lat, .75, 'origin', ['origins'], {deity:d.deity_id}));
+  addLabel(() => pn('北港'), 120.30, 23.57, .5, 'place', ['beigang']);
+  ['淡水','新莊','艋舺','大稻埕','大龍峒','士林','板橋','三峽','新店','內湖','北投'].forEach(n => { const s = SETTLE.find(x => x.name === n); addLabel(() => pn(n), s.lng, s.lat, .07, 'place', ['places']); });
+  addLabel(() => T('台北 101', 'Taipei 101'), 121.5645, 25.034, .2, 'place', ['places']);
+  [['淡水河',121.452,25.138],['基隆河',121.575,25.077],['大漢溪',121.412,24.972],['新店溪',121.532,24.99]].forEach(r => addLabel(() => pn(r[0]), r[1], r[2], .02, 'river', ['places']));
+  addLabel(() => T('艋舺<small>1853 頂下郊拚</small>', 'Bangka<small>1853 Dingxiajiao Fight</small>'), 121.499, 25.037, .05, 'route', ['route'], {t:0});
+  addLabel(() => T('大龍峒<small>暫時避難</small>', 'Dalongdong<small>temporary refuge</small>'), 121.5165, 25.0735, .05, 'route', ['route'], {t:.55});
+  addLabel(() => T('大稻埕<small>1859 建霞海城隍廟</small>', 'Dadaocheng<small>1859 City God Temple built</small>'), 121.5085, 25.0555, .1, 'route', ['route'], {t:.95});
+  regData.forEach(r => { r.lbl = addLabel(() => `${pn(r.name)}<small>${T(r.n + ' 間', r.n + ' temples')}</small>`, r.lng, r.lat, r.H + .5, 'stat', ['regions']); });
+  storeData.forEach(s => { s.lbl = addLabel(() => `${pn(s.name)}<small>${T(`廟 ${s.t}｜超商 ${s.c}`, `Temples ${s.t} | Stores ${s.c}`)}</small>`, s.lng, s.lat, s.H + .5, 'stat', ['stores']); });
+  const renderLegend = () => { legendEl.innerHTML = DEITIES.map(d => `<div data-id="${d.deity_id}"><span class="dot"></span>${shortName(d)}</div>`).join(''); };
+  renderLegend();
+
+  /* 鏡頭關鍵畫面 */
+  const KEYS = {
+    hero:{t:[1.2,.5,1.5], p:[27,30,40]},
+    s1:{t:[.6,.4,.8], p:[9,44,30]},
+    s2:{t:[-1,.6,1], p:[-21,19,33]},
+    s3:{t:[-13,0,-1], p:[-8,46,44]},
+    s4:{t:[-6,.5,-3], p:[-42,14,12]},
+    s5:{t:[-4,.5,-6], p:[-40,13,-2]},
+    s6:{t:[-16,.5,4], p:[-52,15,26]},
+    s7:{t:[-14,0,-1], p:[-14,50,40]},
+    s8:{t:[5.45,.32,-13.35], p:[7.2,2.2,-10.6]},
+    s8b:{t:[5.52,.33,-13.55], p:[6.5,1.15,-12.55]},
+    s9:{t:[5.35,.32,-13.3], p:[6.6,2.9,-10.6]},
+    s11:{t:[.5,.5,.8], p:[19,40,34]},
+    s12:{t:[0,2,1.5], p:[-24,19,30]},
+    s13:{t:[-1,2,-2], p:[-31,17,13]},
+    explore:{t:[.8,.4,.2], p:[7,44,33]}
+  };
+  function keyOf(id){
+    if(id === 's10'){ const d = DIST_BY_NAME[dist10]; const t = new V3(X(d.lng), groundY(d.lng, d.lat) + .03, Z(d.lat)); return {t, p:t.clone().add(new V3(.45, .66, .74))}; }
+    const k = KEYS[id]; return {t:new V3(...k.t), p:new V3(...k.p)};
+  }
+  function sph(off){ const r = off.length(); return {r, th:Math.atan2(off.x, off.z), ph:Math.acos(clamp(off.y/r, -1, 1))}; }
+
+  /* 狀態表 */
+  const STRAIT = {view:1, pts:'deity', legend:1, origins:1, boat:1, labels:['strait','origins']};
+  const BASIN_S = {pts:'deity', basin:1, legend:1, minis:1, labels:['places']};
+  const STATES = {
+    hero:{night:1, pts:'mono'},
+    s1:{night:1, pts:'mono'},
+    s2:{pts:'deity', legend:1, chaotian:1, labels:['beigang']},
+    s3:{...STRAIT, chaotian:1, boatDeity:'mazu', labels:['strait','origins','beigang']},
+    s4:{...STRAIT, hi:() => ['baosheng','qingshui','guangze']},
+    s5:{...STRAIT, hi:() => ['kaizhang']},
+    s6:{...STRAIT, hi:() => ['sanshan']},
+    s7:{...STRAIT, hi:() => [sel7]},
+    s8:{...BASIN_S},
+    s8b:{...BASIN_S, pts:'dim', route:1, minis:'xiahai', labels:['route']},
+    s9:{...BASIN_S, year:1},
+    s10:{...BASIN_S, district:1, labels:[]},
+    s11:{pts:'tudi'},
+    s12:{pts:'dim', regions:1, labels:['regions'], legend:1},
+    s13:{pts:'dim', stores:1, labels:['stores']},
+    explore:{pts:'explore', explore:1, minis:'explore', labels:[]}
+  };
+  let current = null, curState = STATES.hero, hiList = null, playing = null, storyVisible = true;
+  const slider9 = $('slider9'), play9 = $('play9');
+  const tmpC = new THREE.Color(), GOLD = new THREE.Color(0xf2c55c);
+
+  function setPointTargets(){
+    const st = curState, hi = hiList, dark = isDark(), dim = new THREE.Color(dark ? 0x3a2a20 : 0xd8c4a2);
+    TEMPLES.forEach((p, i) => {
+      let c = tmpC.set(col(p.deity_id)), a = .88, s = .11;
+      if(st.pts === 'mono'){ c = GOLD; a = .92; }
+      else if(st.pts === 'dim'){ a = .16; }
+      else if(st.pts === 'tudi'){ if(p.deity_id === 'tudi'){ a = 1; s = .16; } else a = .07; }
+      if(hi){ a = hi.includes(p.deity_id) ? .96 : .07; }
+      if(st.pts === 'explore'){ a = p.ev ? .92 : 0; s = p.er ? .2 : .12; }
+      if(st.basin && p.district) a = 0;
+      tCol[i*3] = c.r; tCol[i*3 + 1] = c.g; tCol[i*3 + 2] = c.b; tAlpha[i] = a; tSize[i] = s;
+    });
+    const dc = DIST_BY_NAME[dist10];
+    BASIN.forEach((p, i) => {
+      let h = 0, c = plTC[i].set(col(p.deity_id));
+      if(st.basin){
+        h = 1;
+        if(st.year && p.founded_year > year9) h = 0;
+        if(st.pts === 'dim'){ c.lerp(dim, .6); h = .85; }
+        if(st.district){ if(distKm(p, dc) <= 1.5) h = 1.45; else { h = .8; c.lerp(dim, .7); } }
+      }
+      plT[i] = h;
+    });
+    CITY.forEach((b, i) => { cT[i] = st.explore ? (b.y <= EX_YEAR ? 1 : 0) : st.basin ? ((st.year && b.y > year9) ? 0 : 1) : 0; });
+    cityDirty = true;
+  }
+  function districtStats(){
+    const c = DIST_BY_NAME[dist10];
+    const near = TEMPLES.filter(p => distKm(p, c) <= 1.5);
+    const counts = d3.rollups(near, v => v.length, p => p.deity_id).sort((a, b) => b[1] - a[1]);
+    return {c, near, counts, oldest:d3.least(near, p => p.founded_year), closest:d3.least(near, p => distKm(p, c))};
+  }
+  function applyState(id){
+    current = id; curState = STATES[id]; hiList = curState.hi ? curState.hi() : null;
+    stage.dataset.scene = id === 'explore' ? 'explore' : (id === 'hero' || id === 's1') ? 'night' : /^s[2-7]$/.test(id) ? 'strait' : /^s(8|8b|9|10)$/.test(id) ? 'basin' : 'compare';
+    setPointTargets();
+    const delayBase = performance.now()/1000;
+    ARCS.forEach(a => {
+      const on = !!(hiList && hiList.includes(a.d));
+      if(on && a.want === 0){ a.want = 1; a.delay = delayBase + (reduce ? 0 : hiList.indexOf(a.d)*.25 + a.j*.15); }
+      if(!on) a.want = 0;
+    });
+    ORIG.forEach(o => { o.want = curState.origins ? 1 : 0; o.dim = hiList && !hiList.includes(o.d); });
+    boatWant = curState.boat ? 1 : 0;
+    const bd = curState.boatDeity || (hiList && hiList[0]);
+    boatArc = bd ? ARCS.find(a => a.d === bd) : null;
+    if(boatArc) boatT = .05;
+    MINIS.forEach(mn => {
+      let w = 0;
+      if(mn.b.id === 'chaotian'){ if(curState.chaotian) w = .05; }
+      else if(curState.minis === 1){ w = (curState.year && mn.b.year > year9) ? 0 : .0045; }
+      else if(curState.minis === mn.b.id){ w = .0058; }
+      else if(curState.minis === 'explore'){ w = mn.b.year <= EX_YEAR ? (mn.b.id === 'chaotian' ? .05 : .0045) : 0; }
+      mn.want = w;
+    });
+    routeWant = curState.route ? 1 : 0; if(routeWant && routeProg === 0) routeT0 = performance.now()/1000;
+    colGroups.forEach(g => { g.want = (g.kind === 'reg' && curState.regions) || (g.kind === 'store' && curState.stores) ? 1 : 0; g.t0 = delayBase + g.delay; });
+    if(curState.district){
+      const {oldest, closest} = districtStats(); haloPicks = [oldest, closest].filter(Boolean);
+    } else haloPicks = (curState.explore && EX_SEL) ? [EX_SEL] : [];
+    legendEl.classList.toggle('on', !!curState.legend);
+    legendEl.querySelectorAll('div').forEach(el => { el.querySelector('.dot').style.background = col(el.dataset.id); el.classList.toggle('dim', !!hiList && !hiList.includes(el.dataset.id)); });
+    const groups = new Set(curState.labels || []);
+    LBL.forEach(L => {
+      L.on = L.groups.some(g => groups.has(g));
+      L.el.classList.toggle('dim', !!(L.deity && hiList && !hiList.includes(L.deity)));
+      if(L.t === undefined) L.el.classList.toggle('on', L.on);
+    });
+    if(id !== 's9') stopPlay();
+    if(window.CHNAV) window.CHNAV.mark(id);
+  }
+
+  /* 捲動 → 鏡頭 */
+  const stepEls = [...document.querySelectorAll('.step')];
+  let centers = [];
+  function measure(){ centers = stepEls.map(el => { const r = el.getBoundingClientRect(); return r.top + scrollY + r.height/2; }); }
+  measure(); new ResizeObserver(measure).observe($('steps')); addEventListener('load', measure);
+  function scrollPos(){
+    const v = scrollY + innerHeight/2;
+    let i = 0; while(i < centers.length - 1 && v >= centers[i + 1]) i++;
+    if(i >= centers.length - 1) return {a:centers.length - 1, b:centers.length - 1, f:0};
+    const f = clamp((v - centers[i])/(centers[i + 1] - centers[i]), 0, 1);
+    return {a:i, b:i + 1, f};
+  }
+  const camPos = new V3(60, 60, 80), camTgt = new V3(0, 0, 0), desP = new V3(), desT = new V3();
+  let first = true, mx = 0, my = 0, day = 0, W = 1, H = 1, exploreMode = false, baseOffX = 0, baseOffY = 0, offX = 0, offY = 0, flyTw = null, placesOn = false;
+  /* 第五章：自由操作鏡頭 */
+  const ctl = new THREE.OrbitControls(camera, canvas);
+  ctl.enabled = false; ctl.enableDamping = true; ctl.dampingFactor = .09; ctl.screenSpacePanning = false;
+  ctl.minDistance = .35; ctl.maxDistance = 120; ctl.minPolarAngle = .12; ctl.maxPolarAngle = 1.3;
+  ctl.mouseButtons = {LEFT:THREE.MOUSE.PAN, MIDDLE:THREE.MOUSE.DOLLY, RIGHT:THREE.MOUSE.ROTATE};
+  ctl.touches = {ONE:null, TWO:THREE.TOUCH.DOLLY_PAN};
+  ctl.addEventListener('start', () => { flyTw = null; });
+  canvas.style.touchAction = 'pan-y';
+  const wheelHint = $('wheelHint'); let hintTimer = 0;
+  stage.addEventListener('wheel', e => {
+    if(!exploreMode || e.target !== canvas || e.ctrlKey || e.metaKey) return;
+    e.stopPropagation();
+    wheelHint.classList.add('on'); clearTimeout(hintTimer); hintTimer = setTimeout(() => wheelHint.classList.remove('on'), 1400);
+  }, {capture:true, passive:true});
+  function flyCam(t1, p1, dur = 1100){
+    if(reduce){ ctl.target.copy(t1); camera.position.copy(p1); flyTw = null; return; }
+    flyTw = {t0:ctl.target.clone(), p0:camera.position.clone(), t1:t1.clone(), p1:p1.clone(), st:performance.now(), dur};
+  }
+  function flyToLL(lng, lat, dist){
+    const t = new V3(X(lng), groundY(lng, lat) + .02, Z(lat));
+    const dir = camera.position.clone().sub(ctl.target).normalize();
+    flyCam(t, t.clone().addScaledVector(dir, dist));
+  }
+  let downXY = null;
+  canvas.addEventListener('pointerdown', e => { downXY = [e.clientX, e.clientY]; });
+  canvas.addEventListener('pointerup', e => {
+    if(!exploreMode || !downXY || e.button !== 0 || Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]) > 5) return;
+    const r = canvas.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+    let best = null, bd = 196, tmp = new V3();
+    TEMPLES.forEach((p, i) => {
+      if(!p.ev) return;
+      tmp.set(pPos[i*3], pPos[i*3 + 1], pPos[i*3 + 2]).project(camera);
+      if(tmp.z > 1) return;
+      const dx = (tmp.x + 1)/2*W - px, dy = (1 - tmp.y)/2*H - py, d = dx*dx + dy*dy;
+      if(d < bd){ bd = d; best = p; }
+    });
+    if(onExplorePick) onExplorePick(best);
+  });
+  addEventListener('pointermove', e => { if(e.pointerType !== 'mouse') return; mx = e.clientX/innerWidth - .5; my = e.clientY/innerHeight - .5; }, {passive:true});
+  function desired(time){
+    const sp = scrollPos();
+    const ida = stepEls[sp.a].dataset.step, idb = stepEls[sp.b].dataset.step;
+    const e = smooth(.18, .82, sp.f);
+    const ka = keyOf(ida), kb = keyOf(idb);
+    desT.copy(ka.t).lerp(kb.t, e);
+    const sa = sph(ka.p.clone().sub(ka.t)), sb = sph(kb.p.clone().sub(kb.t));
+    let dth = sb.th - sa.th; if(dth > Math.PI) dth -= 2*Math.PI; if(dth < -Math.PI) dth += 2*Math.PI;
+    let r = Math.exp(lerp(Math.log(sa.r), Math.log(sb.r), e)), th = sa.th + dth*e, ph = lerp(sa.ph, sb.ph, e);
+    if(ida === 'hero' && !reduce) th += .22*Math.sin(time*.12)*(1 - e);
+    if(!reduce){ th += mx*.06; ph += my*.035; }
+    if(W/H < 1) r *= 1.65; else if(W/H < 1.3) r *= 1.25;
+    desP.set(desT.x + r*Math.sin(ph)*Math.sin(th), desT.y + r*Math.cos(ph), desT.z + r*Math.sin(ph)*Math.cos(th));
+    const active = e < .5 ? ida : idb;
+    if(active !== current) applyState(active);
+    exploreMode = idb === 'explore' && (ida === 'explore' || sp.f > .97);
+  }
+
+  /* 日夜 */
+  const NIGHT = {bg:new THREE.Color(0x0e1433), sea:new THREE.Color(0x121a40), tint:new THREE.Color(0x4c5374), grat:new THREE.Color(0x3a4a80)};
+  const DAY = {bg:new THREE.Color(0xb4502e), sea:new THREE.Color(0xae4b2a), tint:new THREE.Color(0xffffff), grat:new THREE.Color(0xf6e9d3)};
+  const bgC = new THREE.Color();
+  function applyDay(dm){
+    bgC.copy(NIGHT.bg).lerp(DAY.bg, dm); scene.background = bgC; scene.fog.color.copy(bgC);
+    seaMat.color.copy(NIGHT.sea).lerp(DAY.sea, dm);
+    const tint = tmpC.copy(NIGHT.tint).lerp(DAY.tint, dm);
+    reliefMat.color.copy(tint); capMat.color.setHex(0xf3e3c7).multiply(tint); cnCapMat.color.setHex(0xe2b38c).multiply(tint); sideMat.color.setHex(0x8e3a20).multiply(tint); cityMat.color.setHex(0xf3e8d4).multiply(tint);
+    gratMat.color.copy(NIGHT.grat).lerp(DAY.grat, dm);
+    hemi.intensity = lerp(.32, .72, dm); sun.intensity = lerp(.35, 1.1, dm);
+    sun.color.setHex(0xaab4e0).lerp(new THREE.Color(0xffe2b8), dm);
+    pMat.uniforms.uGlow.value = 1 - dm;
+    riverMat.color.setHex(dm > .5 ? 0x2f6e8c : 0x5f97b5);
+    stage.classList.toggle('night', dm < .5);
+  }
+
+  /* 尺寸 */
+  function resize(){
+    const r = stage.getBoundingClientRect(); W = r.width || innerWidth; H = r.height || innerHeight;
+    renderer.setSize(W, H, false);
+    camera.aspect = W/H;
+    baseOffX = isMobile() ? 0 : -Math.min(W*.2, 250); baseOffY = isMobile() ? H*.17 : 0;
+    if(first){ offX = baseOffX; offY = baseOffY; }
+    camera.setViewOffset(W, H, offX, offY, W, H);
+    camera.updateProjectionMatrix();
+    pMat.uniforms.uScale.value = H*renderer.getPixelRatio()/(2*Math.tan(camera.fov*Math.PI/360));
+  }
+  new ResizeObserver(resize).observe(stage); resize();
+
+  /* 每一幀 */
+  const v3 = new V3();
+  let running = true, last = performance.now();
+  function project(p){ v3.copy(p).project(camera); return {x:(v3.x + 1)/2*W, y:(1 - v3.y)/2*H, ok:v3.z < 1 && Math.abs(v3.x) < 1.15 && Math.abs(v3.y) < 1.15}; }
+  function frame(now){
+    requestAnimationFrame(frame);
+    if(!running) { last = now; return; }
+    const dt = Math.min(.05, (now - last)/1000); last = now; const time = now/1000;
+    desired(time);
+    const kc = reduce ? 1 : 1 - Math.exp(-dt*4.2);
+    if(first){ camPos.copy(desP); camTgt.copy(desT); first = false; }
+    if(exploreMode){
+      if(!ctl.enabled){ ctl.enabled = true; ctl.target.copy(camTgt); camera.position.copy(camPos); const kx = keyOf('explore'); if(W/H < 1) kx.p.sub(kx.t).multiplyScalar(1.65).add(kx.t); flyCam(kx.t, kx.p, 1300); }
+      if(flyTw){
+        const q = Math.min(1, (now - flyTw.st)/flyTw.dur), e = q < .5 ? 4*q*q*q : 1 - Math.pow(-2*q + 2, 3)/2;
+        ctl.target.lerpVectors(flyTw.t0, flyTw.t1, e); camera.position.lerpVectors(flyTw.p0, flyTw.p1, e);
+        if(q === 1) flyTw = null;
+      }
+      ctl.update();
+      camPos.copy(camera.position); camTgt.copy(ctl.target);
+    } else {
+      if(ctl.enabled){ ctl.enabled = false; flyTw = null; }
+      camPos.lerp(desP, kc); camTgt.lerp(desT, kc);
+      camera.position.copy(camPos); camera.lookAt(camTgt);
+    }
+    const ko = reduce ? 1 : 1 - Math.exp(-dt*3);
+    offX += ((exploreMode ? 0 : baseOffX) - offX)*ko; offY += ((exploreMode ? 0 : baseOffY) - offY)*ko;
+    camera.setViewOffset(W, H, offX, offY, W, H);
+    const dist = camPos.distanceTo(camTgt);
+    scene.fog.near = dist*1.15; scene.fog.far = dist*3.6;
+    camera.near = Math.max(.005, dist*.01); camera.far = dist*12; camera.updateProjectionMatrix();
+    sun.target.position.copy(camTgt); sun.position.copy(camTgt).addScaledVector(SUNDIR, dist*1.6);
+    const sc = sun.shadow.camera, ss = dist*.85; sc.left = -ss; sc.right = ss; sc.top = ss; sc.bottom = -ss; sc.near = dist*.1; sc.far = dist*4; sc.updateProjectionMatrix();
+
+    const dayWant = (curState.night || isDark()) ? 0 : 1;
+    const kd = reduce ? 1 : 1 - Math.exp(-dt*1.6);
+    if(Math.abs(day - dayWant) > .001){ day = lerp(day, dayWant, kd); applyDay(day); }
+
+    const k = reduce ? 1 : 1 - Math.exp(-dt*5);
+    for(let i = 0; i < N; i++){
+      pCol[i*3] += (tCol[i*3] - pCol[i*3])*k; pCol[i*3 + 1] += (tCol[i*3 + 1] - pCol[i*3 + 1])*k; pCol[i*3 + 2] += (tCol[i*3 + 2] - pCol[i*3 + 2])*k;
+      pAlpha[i] += (tAlpha[i] - pAlpha[i])*k; pSize[i] += (tSize[i] - pSize[i])*k;
+    }
+    pGeo.attributes.aColor.needsUpdate = true; pGeo.attributes.aAlpha.needsUpdate = true; pGeo.attributes.aSize.needsUpdate = true;
+    BASIN.forEach((p, i) => {
+      plH[i] += (plT[i] - plH[i])*k; plC[i].lerp(plTC[i], k);
+      const sc = Math.max(.0001, plH[i]), bh = TS*.7*sc;
+      dummy.rotation.set(0, p.rot, 0);
+      dummy.position.set(X(p.lng), p.gy, Z(p.lat)); dummy.scale.set(TS*sc, bh, TS*.8*sc); dummy.updateMatrix(); tBase.setMatrixAt(i, dummy.matrix);
+      dummy.position.y = p.gy + bh; dummy.scale.set(TS*1.55*sc, TS*.75*sc, TS*1.3*sc); dummy.updateMatrix();
+      pillars.setMatrixAt(i, dummy.matrix); pillars.setColorAt(i, plC[i]);
+    });
+    tBase.instanceMatrix.needsUpdate = true; pillars.instanceMatrix.needsUpdate = true; if(pillars.instanceColor) pillars.instanceColor.needsUpdate = true;
+    if(cityDirty){
+      let moving = false, any = false; const kc2 = reduce ? 1 : 1 - Math.exp(-dt*3);
+      CITY.forEach((b, i) => {
+        const v = cH[i] + (cT[i] - cH[i])*kc2; if(Math.abs(cT[i] - v) > .002) moving = true; cH[i] = Math.abs(cT[i] - v) > .002 ? v : cT[i]; if(cH[i] > .001) any = true;
+        dummy.rotation.set(0, b.rot, 0); dummy.position.set(X(b.lng), b.gy, Z(b.lat)); dummy.scale.set(b.w, Math.max(.00001, b.h*cH[i]), b.d); dummy.updateMatrix(); city.setMatrixAt(i, dummy.matrix);
+      });
+      city.instanceMatrix.needsUpdate = true; city.visible = any; cityDirty = moving;
+    }
+    riverMat.opacity += ((curState.basin ? .9 : 0) - riverMat.opacity)*k;
+
+    ARCS.forEach(a => {
+      if(a.want && time >= a.delay) a.prog = Math.min(1, a.prog + dt/(reduce ? .001 : 1.5));
+      else if(!a.want) a.prog = Math.max(0, a.prog - dt*2.5);
+      a.m.visible = a.prog > .002;
+      if(a.m.visible){ const e = a.prog < .5 ? 2*a.prog*a.prog : 1 - Math.pow(-2*a.prog + 2, 2)/2; a.m.geometry.setDrawRange(0, Math.floor(a.full*e/6)*6); a.mat.color.set(DMAP[a.d][isDark() ? 'colorDark' : 'color']); }
+    });
+    ORIG.forEach(o => {
+      o.s += (o.want - o.s)*k; o.grp.scale.setScalar(Math.max(.001, o.s)); o.grp.visible = o.s > .01;
+      o.beamMat.opacity = (o.dim ? .08 : .38)*(.75 + .25*Math.sin(time*2 + o.grp.position.x));
+    });
+    boatS += (boatWant - boatS)*k;
+    if(boatArc && boatS > .01){
+      boatT += dt/(reduce ? 1e9 : 11); if(boatT > .97) boatT = .05;
+      const p = boatArc.curve.getPoint(boatT), q = boatArc.curve.getPoint(Math.min(1, boatT + .01));
+      const lng = unX(p.x), lat = unZ(p.z), onSea = !inTW(lng, lat) && !inCN(lng, lat);
+      boat.position.set(p.x, .02 + Math.sin(time*2.2)*.03, p.z);
+      boat.rotation.set(Math.sin(time*1.7)*.05, Math.atan2(-(q.z - p.z), q.x - p.x), Math.sin(time*1.3)*.04);
+      boat.scale.setScalar(Math.max(.001, boatS*1.25*(onSea ? 1 : .001)));
+      boat.visible = true;
+    } else boat.visible = false;
+    MINIS.forEach(mn => { mn.s += (mn.want - mn.s)*k; mn.wrap.visible = mn.s > .00012; mn.wrap.scale.setScalar(Math.max(.0001, mn.s)); });
+    if(routeWant){ routeProg = Math.min(1, reduce ? 1 : Math.max(0, time - routeT0 - .6)/2.8); } else routeProg = Math.max(0, routeProg - dt*2);
+    route.visible = routeProg > .002; route.geometry.setDrawRange(0, Math.floor(routeGeo.index.count*routeProg/6)*6);
+    statue.visible = route.visible; if(statue.visible){ statue.position.copy(routeCurve.getPoint(routeProg)); statue.position.y += .01; }
+    ringMat.opacity += ((curState.district ? .95 : 0) - ringMat.opacity)*k; ring.visible = ringMat.opacity > .01;
+    haloMat.opacity += ((haloPicks.length ? 1 : 0) - haloMat.opacity)*k;
+    halos.forEach((h, i) => { const p = haloPicks[i]; h.visible = !!p && haloMat.opacity > .01; if(p){ h.position.set(X(p.lng), p.gy + (p.bi !== undefined ? TS*1.5*plH[p.bi] : .02) + .018 + Math.sin(time*2 + i)*.004, Z(p.lat)); } });
+    colGroups.forEach(g => {
+      const w = (g.want && time >= g.t0) ? 1 : 0;
+      g.s += (w - g.s)*(reduce ? 1 : 1 - Math.exp(-dt*3.2)); g.grp.scale.y = Math.max(.0001, g.s); g.grp.visible = g.s > .002;
+    });
+
+    renderer.render(scene, camera);
+
+    if(curState.explore){
+      const want = dist < 7;
+      if(want !== placesOn){ placesOn = want; LBL.forEach(L => { if(L.groups.includes('places')){ L.on = want; L.el.classList.toggle('on', want); } }); }
+    } else placesOn = false;
+    LBL.forEach(L => {
+      if(L.t !== undefined){ const show = L.on && routeProg >= L.t; L.el.classList.toggle('on', show); }
+      if(!L.on && !L.el.classList.contains('on')) return;
+      const s = project(L.p);
+      L.el.style.visibility = s.ok ? '' : 'hidden';
+      L.el.style.transform = `translate(${s.x.toFixed(1)}px,${s.y.toFixed(1)}px) translate(-50%,-100%)`;
+    });
+    MINIS.forEach((mn, i) => {
+      const el = bmEls[i], show = mn.want > 0 && mn.s > mn.want*.6;
+      el.classList.toggle('off', !show);
+      el.classList.toggle('compact', !!curState.explore && dist > 9 && mn.b.id !== 'chaotian');
+      if(!show) return;
+      const s = project(v3.copy(mn.wrap.position).setY(mn.wrap.position.y + (mn.b.id === 'chaotian' ? 1 : .09)));
+      el.style.visibility = s.ok ? '' : 'hidden';
+      el.style.transform = `translate(${s.x.toFixed(1)}px,${(s.y - 10).toFixed(1)}px) translate(-50%,-100%)`;
+    });
+    if(veil && !veil.classList.contains('done')) veil.classList.add('done');
+  }
+  new IntersectionObserver(es => { es.forEach(e => { storyVisible = e.isIntersecting; running = storyVisible && !document.body.classList.contains('x-open'); }); }, {threshold:0}).observe($('story'));
+  applyDay(0); applyState('hero');
+  requestAnimationFrame(frame);
+
+  /* 卡片互動 */
+  const chips7 = $('chips7'), note7 = $('note7');
+  const buildChips7 = () => { chips7.innerHTML = DEITIES.map(d => `<button type="button" class="chip" data-id="${d.deity_id}" aria-pressed="false"><span class="dot"></span>${shortName(d)}</button>`).join(''); };
+  buildChips7();
+  function render7(){
+    chips7.querySelectorAll('.chip').forEach(b => { b.setAttribute('aria-pressed', b.dataset.id === sel7); b.querySelector('.dot').style.background = col(b.dataset.id); });
+    const d = DMAP[sel7], n = TEMPLES.filter(p => p.deity_id === sel7).length;
+    note7.textContent = LANG === 'en'
+      ? (d.origin_place ? `${DF(d, 'name')}: from ${DF(d, 'origin_place')}, brought to Taiwan mainly by ${DF(d, 'group')}. ${DF(d, 'desc')} The demo data includes ${n}.` : `${DF(d, 'name')} (${DF(d, 'aliases')}): no single homeland. ${DF(d, 'desc')} The demo data includes ${n}.`)
+      : (d.origin_place ? `${d.name}：原鄉在${d.origin_place}，主要由${d.group}帶來台灣。${d.desc}示範資料中有 ${n} 間。` : `${d.name}（${d.aliases}）：沒有單一原鄉。${d.desc}示範資料中有 ${n} 間。`);
+  }
+  chips7.addEventListener('click', e => { const b = e.target.closest('.chip'); if(!b) return; sel7 = b.dataset.id; render7(); ARCS.forEach(a => a.want = 0); if(current === 's7') applyState('s7'); });
+  render7();
+
+  function updateYear(){
+    $('year9').textContent = year9;
+    document.querySelectorAll('.count9').forEach(el => { el.textContent = BASIN.filter(p => p.founded_year <= year9).length; });
+    if(current === 's9') applyState('s9');
+  }
+  function stopPlay(){ if(playing){ playing.stop(); playing = null; play9.textContent = T('播放', 'Play'); } }
+  slider9.addEventListener('input', () => { stopPlay(); year9 = +slider9.value; updateYear(); });
+  play9.addEventListener('click', () => {
+    if(playing){ stopPlay(); return; }
+    if(year9 >= 2020) year9 = 1700;
+    play9.textContent = T('暫停', 'Pause');
+    playing = d3.interval(() => { year9 = Math.min(2020, year9 + 3); slider9.value = year9; updateYear(); if(year9 >= 2020) stopPlay(); }, 70);
+  });
+  updateYear();
+
+  const sel10 = $('dist10'), res10 = $('result10');
+  const buildSel10 = () => { sel10.innerHTML = ['台北市','新北市'].map(c => `<optgroup label="${pn(c)}">` + DISTRICTS.filter(d => d[0] === c).map(d => `<option value="${d[1]}">${pn(d[1])}</option>`).join('') + '</optgroup>').join(''); sel10.value = dist10; };
+  buildSel10();
+  function render10(){
+    const {c, near, counts, oldest, closest} = districtStats();
+    if(!near.length){ res10.innerHTML = T(`<p>${c.name}方圓 1.5 公里內，示範資料裡沒有廟。換一個行政區看看。</p>`, `<p>The demo data has no temples within 1.5 km of ${pn(c.name)}. Try another district.</p>`); return; }
+    const top = DMAP[counts[0][0]], km = distKm(closest, c).toFixed(1);
+    if(LANG === 'en'){
+      res10.innerHTML = `<p>Within 1.5 km of ${pn(c.name)}, ${pn(c.county)}, the demo data has <strong>${near.length}</strong> temples.</p>
+      <dl class="facts">
+        <dt>Most common god</dt><dd><span class="dot" style="background:${col(top.deity_id)}"></span> ${DF(top, 'name')} (${counts[0][1]})</dd>
+        <dt>Oldest temple</dt><dd>${oldest.name}, ${oldest.year_estimated ? 'c. ' : ''}${oldest.founded_year}</dd>
+        <dt>Closest to center</dt><dd>${closest.name} (main deity: ${shortName(DMAP[closest.deity_id])}), about ${km} km</dd>
+      </dl>
+      <p class="note">${top.origin_place ? `${DF(top, 'name')} originated in ${DF(top, 'origin_place')} and is associated with ${DF(top, 'group')}.` : DF(top, 'desc')} The two temples wearing gold halos are the oldest and the closest.</p>`;
+      return;
+    }
+    res10.innerHTML = `<p>${c.county}${c.name}方圓 1.5 公里內，示範資料裡有 <strong>${near.length}</strong> 間廟。</p>
+      <dl class="facts">
+        <dt>最常見的神明</dt><dd><span class="dot" style="background:${col(top.deity_id)}"></span> ${top.name}（${counts[0][1]} 間）</dd>
+        <dt>最老的廟</dt><dd>${oldest.name}，${oldest.year_estimated ? '約 ' : ''}${oldest.founded_year} 年</dd>
+        <dt>離中心最近</dt><dd>${closest.name}（主祀${shortName(DMAP[closest.deity_id])}），約 ${km} 公里</dd>
+      </dl>
+      <p class="note">${top.origin_place ? `${top.name}的原鄉在${top.origin_place}，與${top.group}的移民有關。` : top.desc}地圖上戴著金色光環的是最老與最近的兩間。</p>`;
+  }
+  sel10.addEventListener('change', () => { dist10 = sel10.value; render10(); buildRing(); if(current === 's10') applyState('s10'); });
+  render10();
+
+  const td = TEMPLES.filter(p => p.deity_id === 'tudi').length;
+  const renderStat11 = () => { $('stat11').textContent = Math.round(td/TEMPLES.length*100) + T(' 間', ''); };
+  renderStat11();
+  function render12(){
+    $('share12').innerHTML = regData.map(r => {
+      const top = r.shares.slice().sort((a, b) => b.n - a.n).slice(0, 2);
+      return `<li><b>${pn(r.name)}</b><span>${top.map(t => `<span class="dot" style="background:${col(t.id)}"></span> ${shortName(DMAP[t.id])} ${Math.round(t.n/r.n*100)}%`).join('　')}</span></li>`;
+    }).join('');
+  }
+  render12();
+  onLang(() => {
+    renderLegend(); buildChips7(); render7(); buildSel10(); render10(); renderStat11(); render12();
+    LBL.forEach(L => { L.el.innerHTML = L.hf(); });
+    MINIS.forEach((mn, i) => { bmEls[i].innerHTML = bmInner(mn.b); bmEls[i].setAttribute('aria-label', T('進入 3D：', 'Enter 3D: ') + BF(mn.b, 'name')); });
+    play9.textContent = playing ? T('暫停', 'Pause') : T('播放', 'Play');
+    if(current) applyState(current);
+  });
+  document.querySelectorAll('[data-open3d]').forEach(b => b.addEventListener('click', () => window.T3 && window.T3.open(b.dataset.open3d)));
+
+  return {
+    pause(v){ running = !v && storyVisible; last = performance.now(); },
+    theme(){ applyDay(day); setPointTargets(); render7(); render10(); render12(); legendEl.querySelectorAll('div').forEach(el => el.querySelector('.dot').style.background = col(el.dataset.id)); },
+    current:() => current,
+    ex:{
+      refresh(){ if(current === 'explore') applyState('explore'); },
+      fly:flyToLL,
+      home(){ const k = keyOf('explore'); if(W/H < 1) k.p.sub(k.t).multiplyScalar(1.65).add(k.t); flyCam(k.t, k.p); },
+      zoom(f){ const t = ctl.target.clone(), p = camera.position.clone().sub(t).multiplyScalar(f).add(t); flyCam(t, p, 450); },
+      active:() => exploreMode
+    }
+  };
+})() : null;
+if(!HAS3D){ $('stage3d').classList.add('nogl'); $('veil').classList.add('done'); }
+
+/* ===== 第五章：自由探索 ===== */
+const STORIES = [
+  {y:1684, t:'清廷將台灣納入版圖', d:'此後閩粵移民大量渡海來台，家鄉的神明也隨著香火一起過來。', t_en:'Qing dynasty annexes Taiwan', d_en:'Migrants from Fujian and Guangdong began crossing in large numbers, bringing their hometown gods with them.', focus:'tw'},
+  {y:1853, t:'頂下郊拚', d:'艋舺的三邑人與同安人爆發械鬥，落敗的同安人遷往大稻埕，也把霞海城隍一起帶過去，1859 年在當地建廟。', t_en:'The Dingxiajiao Fight', d_en:'Sanyi and Tong’an people clashed in Bangka. The defeated Tong’an people moved to Dadaocheng with the Xia-Hai City God and built a temple there in 1859.', focus:'basin'},
+  {y:1895, t:'日治時期開始', d:'台灣進入日本統治，廟宇的興建與管理開始受到新政權的影響。', t_en:'Japanese rule begins', d_en:'Taiwan came under Japanese rule, and the new government began to shape how temples were built and run.', focus:'tw'},
+  {y:1937, t:'寺廟整理運動', d:'日治後期推行皇民化，各地展開寺廟整理，不少廟宇被裁併或拆除，部分神像遭集中焚毀。', t_en:'Temple consolidation campaign', d_en:'Under late-colonial Japanization policies, many temples were merged or demolished, and some statues were burned.', focus:'tw'}
+];
+const ST = (s, k) => LANG === 'en' ? s[k + '_en'] : s[k];
+let selected = null, ePlay = null;
+$('bmList').innerHTML = BIG.map(b => `<button type="button" class="chip" data-id="${b.id}"></button>`).join('');
+onLang(() => { [...$('bmList').children].forEach((el, i) => { el.textContent = BF(BIG[i], 'name'); }); });
+$('bmList').addEventListener('click', e => { const b = e.target.closest('[data-id]'); if(b && window.T3) window.T3.open(b.dataset.id); });
+const EXV = S3 ? S3.ex : {refresh(){}, fly(){}, home(){}, zoom(){}};
+const filt = {deities:new Set(DEITIES.map(d => d.deity_id)), county:''};
+const eTitle = $('eTitle'), eSub = $('eSub'), info = $('info');
+function eUpdate(){
+  let n = 0; const recent = [];
+  TEMPLES.forEach(p => {
+    p.eb = filt.deities.has(p.deity_id) && (!filt.county || p.county === filt.county);
+    p.ev = p.eb && p.founded_year <= eYear;
+    p.er = p.ev && p.founded_year > eYear - 10;
+    if(p.ev) n++; if(p.er) recent.push(p);
+  });
+  const place = pn(filt.county || '台灣'), one = filt.deities.size === 1 ? DMAP[[...filt.deities][0]] : null;
+  eTitle.innerHTML = !filt.deities.size ? T('請至少選一位神明', 'Select at least one god')
+    : T(`<span>${eYear}</span> 年，${place}<br>已有 <span>${NUM(n)}</span> 間${one ? shortName(one) : ''}廟`,
+        `In <span>${eYear}</span>, ${place}<br>had <span>${NUM(n)}</span> ${one ? shortName(one) + ' ' : ''}temples`);
+  const y0 = eYear - 9;
+  if(recent.length){
+    const top = d3.greatest(d3.rollups(recent, v => v.length, p => p.deity_id), d => d[1]);
+    eSub.textContent = T(`${y0} 到 ${eYear} 年間新建 ${recent.length} 間，以${shortName(DMAP[top[0]])}最多（示範資料）`, `${recent.length} new temples from ${y0} to ${eYear}, most of them ${shortName(DMAP[top[0]])} (demo data)`);
+  } else eSub.textContent = T(`${y0} 到 ${eYear} 年間沒有新建的廟（示範資料）`, `No new temples from ${y0} to ${eYear} (demo data)`);
+  if(selected && !selected.ev) closeInfo();
+  EX_YEAR = eYear;
+  drawTimeline(); EXV.refresh();
+}
+const tlSvg = d3.select('#tl'), tlNode = tlSvg.node(), tlPad = {l:6, r:10, t:24, b:20};
+const tx = d3.scaleLinear().domain([1680, 2020]);
+function drawTimeline(){
+  const r = tlNode.getBoundingClientRect(), W2 = r.width, H2 = r.height;
+  if(!W2) return;
+  tx.range([tlPad.l, W2 - tlPad.r]);
+  tlSvg.attr('viewBox', `0 0 ${W2} ${H2}`);
+  const bins = d3.range(1680, 2020, 10).map(d => ({d, n:0}));
+  TEMPLES.forEach(p => { if(!p.eb) return; const i = Math.floor((p.founded_year - 1680)/10); if(i >= 0) bins[Math.min(bins.length - 1, i)].n++; });
+  const ymax = d3.max(bins, b => b.n) || 1, yh = H2 - tlPad.t - tlPad.b;
+  tlSvg.selectAll('rect.bar').data(bins).join('rect').attr('class', 'bar').classed('on', b => b.d <= eYear)
+    .attr('x', b => tx(b.d) + 1).attr('width', b => Math.max(1, tx(b.d + 10) - tx(b.d) - 2))
+    .attr('y', b => tlPad.t + yh - yh*b.n/ymax).attr('height', b => yh*b.n/ymax);
+  tlSvg.selectAll('text.tl-ax').data([1700, 1750, 1800, 1850, 1900, 1950, 2000]).join('text').attr('class', 'tl-ax')
+    .attr('x', d => tx(d)).attr('y', H2 - 4).attr('text-anchor', 'middle').text(d => d);
+  tlSvg.selectAll('text.tl-lab').data([0]).join('text').attr('class', 'tl-lab').attr('x', W2 - tlPad.r).attr('y', 12).attr('text-anchor', 'end').text(T('每十年新建的廟', 'New temples per decade'));
+  tlSvg.selectAll('line.tl-mark').data([eYear]).join('line').attr('class', 'tl-mark')
+    .attr('x1', d => tx(d)).attr('x2', d => tx(d)).attr('y1', 4).attr('y2', H2 - tlPad.b);
+  const sd = tlSvg.selectAll('g.sdot').data(STORIES).join(enter => {
+    const g = enter.append('g').attr('class', 'sdot');
+    g.append('circle').attr('class', 'hit').attr('r', 12);
+    g.append('circle').attr('class', 'v').attr('r', 5.5);
+    g.append('title');
+    return g;
+  });
+  sd.attr('data-i', (d, i) => i).attr('transform', d => `translate(${tx(d.y)},11)`);
+  sd.select('title').text(d => `${d.y}${T('：', ': ')}${ST(d, 't')}`);
+}
+let eYear = 2020;
+function setYear(y){ eYear = y; tlNode.setAttribute('aria-valuenow', y); eUpdate(); }
+function yearAt(e){ const r = tlNode.getBoundingClientRect(); return Math.round(Math.max(1680, Math.min(2020, tx.invert(e.clientX - r.left)))); }
+let dragging = false;
+tlNode.addEventListener('pointerdown', e => {
+  const s = e.target.closest('.sdot');
+  if(s){ openStory(STORIES[+s.dataset.i]); return; }
+  dragging = true; tlNode.setPointerCapture(e.pointerId); stopEPlay(); setYear(yearAt(e));
+});
+tlNode.addEventListener('pointermove', e => { if(dragging) setYear(yearAt(e)); });
+['pointerup', 'pointercancel'].forEach(t => tlNode.addEventListener(t, () => { dragging = false; }));
+tlNode.addEventListener('keydown', e => {
+  const step = e.shiftKey ? 10 : 1, k = e.key;
+  if(k === 'ArrowRight' || k === 'ArrowUp') setYear(Math.min(2020, eYear + step));
+  else if(k === 'ArrowLeft' || k === 'ArrowDown') setYear(Math.max(1680, eYear - step));
+  else if(k === 'Home') setYear(1680);
+  else if(k === 'End') setYear(2020);
+  else return;
+  stopEPlay(); e.preventDefault();
+});
+const playE = $('playE');
+function stopEPlay(){ if(ePlay){ ePlay.stop(); ePlay = null; playE.textContent = T('播放', 'Play'); } }
+playE.addEventListener('click', () => {
+  if(ePlay){ stopEPlay(); return; }
+  if(eYear >= 2020) setYear(1680);
+  playE.textContent = T('暫停', 'Pause');
+  ePlay = d3.interval(() => {
+    const prev = eYear, y = Math.min(2020, eYear + 2), st = STORIES.find(s => s.y > prev && s.y <= y);
+    setYear(y); if(st) openStory(st, true); if(y >= 2020) stopEPlay();
+  }, 70);
+});
+const storyCard = $('storyCard'); let curStory = null;
+function fillStory(s){
+  curStory = s;
+  storyCard.innerHTML = `<button class="close" type="button" aria-label="${T('關閉', 'Close')}">×</button><p class="s-year">${s.y}</p><h3>${ST(s, 't')}</h3><p>${ST(s, 'd')}</p>`;
+  storyCard.querySelector('.close').addEventListener('click', () => { storyCard.hidden = true; });
+}
+function openStory(s, fromPlay){
+  fillStory(s);
+  storyCard.hidden = false;
+  if(!fromPlay){ stopEPlay(); setYear(s.y); }
+  if(s.focus === 'basin') EXV.fly(121.5, 25.055, 4.2); else EXV.home();
+}
+new ResizeObserver(() => drawTimeline()).observe($('tl'));
+const chipsE = $('chipsE');
+const buildChipsE = () => { chipsE.innerHTML = DEITIES.map(d => `<button type="button" class="chip" data-id="${d.deity_id}" aria-pressed="true"><span class="dot"></span>${shortName(d)}</button>`).join(''); };
+buildChipsE();
+function paintChipsE(){ chipsE.querySelectorAll('.chip').forEach(b => { b.setAttribute('aria-pressed', filt.deities.has(b.dataset.id)); b.querySelector('.dot').style.background = col(b.dataset.id); }); }
+chipsE.addEventListener('click', e => { const b = e.target.closest('.chip'); if(!b) return; const id = b.dataset.id; filt.deities.has(id) ? filt.deities.delete(id) : filt.deities.add(id); paintChipsE(); eUpdate(); });
+const countyE = $('countyE');
+const ORDER = ['基隆市','台北市','新北市','桃園市','新竹縣市','苗栗縣','台中市','彰化縣','南投縣','雲林縣','嘉義縣市','台南市','高雄市','屏東縣','宜蘭縣','花蓮縣','台東縣'];
+const present = new Set(TEMPLES.map(p => p.county));
+const buildCounty = () => { countyE.innerHTML = `<option value="">${T('全部縣市', 'All counties and cities')}</option>` + ORDER.filter(c => present.has(c)).map(c => `<option value="${c}">${pn(c)}</option>`).join(''); countyE.value = filt.county; };
+buildCounty();
+countyE.addEventListener('change', () => { filt.county = countyE.value; eUpdate(); });
+$('resetE').addEventListener('click', () => {
+  filt.deities = new Set(DEITIES.map(d => d.deity_id)); filt.county = ''; countyE.value = '';
+  stopEPlay(); storyCard.hidden = true; closeInfo(); paintChipsE(); setYear(2020); EXV.home();
+});
+const filtersEl = $('filters');
+$('openF').addEventListener('click', () => filtersEl.classList.add('open'));
+$('doneE').addEventListener('click', () => filtersEl.classList.remove('open'));
+function closeInfo(){ selected = null; EX_SEL = null; info.classList.remove('on'); EXV.refresh(); }
+function selectTempleE(p){
+  selected = p; EX_SEL = p; const d = DMAP[p.deity_id];
+  info.innerHTML = LANG === 'en' ? `<button class="close" type="button" aria-label="Close">×</button>
+    <h3>${p.name}</h3>
+    <p><span class="dot" style="background:${col(d.deity_id)}"></span> Main deity: ${DF(d, 'name')}${DF(d, 'aliases') ? ` (${DF(d, 'aliases')})` : ''}</p>
+    <dl class="facts">
+      <dt>Founded</dt><dd>${p.year_estimated ? `c. ${p.founded_year} (estimated)` : p.founded_year}</dd>
+      <dt>Location</dt><dd>${p.district ? pn(p.district) + ', ' : ''}${pn(p.county)}</dd>
+      <dt>Address</dt><dd>${addr(p)}</dd>
+      <dt>God’s homeland</dt><dd>${DF(d, 'origin_place') || 'no single homeland'}</dd>
+      <dt>Community</dt><dd>${DF(d, 'group')}</dd>
+    </dl>
+    <p class="note">Demo data, not a real temple</p>`
+  : `<button class="close" type="button" aria-label="關閉">×</button>
+    <h3>${p.name}</h3>
+    <p><span class="dot" style="background:${col(d.deity_id)}"></span> 主祀${d.name}${d.aliases ? `（${d.aliases}）` : ''}</p>
+    <dl class="facts">
+      <dt>建廟</dt><dd>${p.year_estimated ? `約 ${p.founded_year} 年（推估）` : `${p.founded_year} 年`}</dd>
+      <dt>位置</dt><dd>${p.county}${p.district}</dd>
+      <dt>地址</dt><dd>${addr(p)}</dd>
+      <dt>神明原鄉</dt><dd>${d.origin_place || '無單一原鄉'}</dd>
+      <dt>相關族群</dt><dd>${d.group}</dd>
+    </dl>
+    <p class="note">示範資料，非真實廟宇</p>`;
+  info.classList.add('on');
+  info.querySelector('.close').addEventListener('click', closeInfo);
+  EXV.refresh();
+}
+onExplorePick = p => { p ? selectTempleE(p) : closeInfo(); };
+function flyToTemple(p){
+  if(!p.ev){
+    filt.deities.add(p.deity_id);
+    if(filt.county && filt.county !== p.county){ filt.county = ''; countyE.value = ''; }
+    paintChipsE(); setYear(p.founded_year > eYear ? 2020 : eYear);
+  }
+  EXV.fly(p.lng, p.lat, p.district ? .9 : 3.2);
+  selectTempleE(p);
+}
+const qEl = $('q'), resultsEl = $('results');
+let hits = [];
+qEl.addEventListener('input', () => {
+  const q = qEl.value.trim();
+  hits = q ? TEMPLES.filter(p => p.name.includes(q) || DMAP[p.deity_id].name.includes(q)).slice(0, 8) : [];
+  resultsEl.innerHTML = q && !hits.length ? `<li class="note">${T('找不到符合的廟名，試試其他字。', 'No matching temples. Try other characters.')}</li>`
+    : hits.map((p, i) => `<li><button type="button" data-i="${i}">${p.name}<br><small>${T(`${p.county}${p.district}，主祀${shortName(DMAP[p.deity_id])}`, `${p.district ? pn(p.district) + ', ' : ''}${pn(p.county)}; main deity: ${shortName(DMAP[p.deity_id])}`)}</small></button></li>`).join('');
+});
+resultsEl.addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; filtersEl.classList.remove('open'); flyToTemple(hits[+b.dataset.i]); });
+$('zin').addEventListener('click', () => EXV.zoom(.6));
+$('zout').addEventListener('click', () => EXV.zoom(1.65));
+$('zall').addEventListener('click', () => EXV.home());
+paintChipsE(); drawTimeline(); eUpdate();
+onLang(() => {
+  buildChipsE(); paintChipsE(); buildCounty(); eUpdate();
+  if(curStory) fillStory(curStory);
+  if(selected) selectTempleE(selected);
+  if(qEl.value.trim()) qEl.dispatchEvent(new Event('input'));
+  playE.textContent = ePlay ? T('暫停', 'Pause') : T('播放', 'Play');
+});
+
+/* ===== 平滑捲動與章節導覽 ===== */
+let lenis = null;
+if(window.Lenis && !reduce){
+  try{
+    lenis = new Lenis({lerp:.085, smoothWheel:true, wheelMultiplier:.95});
+    const raf = t => { lenis.raf(t); requestAnimationFrame(raf); }; requestAnimationFrame(raf);
+  }catch(e){ lenis = null; }
+}
+function goTo(el){
+  if(lenis) lenis.scrollTo(el, {duration:1.6});
+  else el.scrollIntoView({behavior:reduce ? 'auto' : 'smooth', block:'start'});
+}
+const chnav = $('chnav'), navLinks = [...chnav.querySelectorAll('a')];
+const CH_OF = {hero:'hero', s1:'hero', s2:'hero', s3:'s3', s4:'s3', s5:'s3', s6:'s3', s7:'s3', s8:'s8', s8b:'s8', s9:'s8', s10:'s10', s11:'s11', s12:'s11', s13:'s11', explore:'explore'};
+let navStory = 'hero', inExplore = false, peekTimer = 0;
+function paintNav(){
+  const key = CH_OF[navStory] || 'hero';
+  navLinks.forEach(a => a.setAttribute('aria-current', a.dataset.go === key ? 'true' : 'false'));
+}
+window.CHNAV = {mark(id){ const before = CH_OF[navStory]; navStory = id; paintNav(); if(before !== CH_OF[id] && !inExplore){ chnav.classList.add('peek'); clearTimeout(peekTimer); peekTimer = setTimeout(() => chnav.classList.remove('peek'), 1600); } }};
+chnav.addEventListener('click', e => {
+  const a = e.target.closest('a'); if(!a) return; e.preventDefault();
+  const go = a.dataset.go;
+  const el = go === 'explore' ? $('explore') : go === 'hero' ? $('story') : document.querySelector(`.step[data-step="${go}"]`);
+  if(el) goTo(el);
+});
+$('eBack').addEventListener('click', () => goTo($('story')));
+paintNav();
+
+/* ===== 3D 大廟視窗 ===== */
+window.T3 = (function(){
+  if(!HAS3D) return {open(){}, close(){}, theme(){}};
+  const rootEl = $('x3d');
+  const xMobile = () => matchMedia('(max-width:820px)').matches;
+  const XD = {
+    mazu:{n:'媽祖', alias:'天上聖母', pray:['航海平安','風調雨順','闔家平安']},
+    baosheng:{n:'保生大帝', alias:'大道公', pray:['醫藥健康','祛病消災']},
+    qingshui:{n:'清水祖師', alias:'祖師公', pray:['消災解厄','保佑平安']},
+    kaizhang:{n:'開漳聖王', alias:'陳聖王', pray:['保境安民']},
+    sanshan:{n:'三山國王', alias:'巾山、明山、獨山之神', pray:['守護鄉里','農作豐收']},
+    chenghuang:{n:'城隍爺', alias:'霞海城隍', pray:['祈求平安','向月老求姻緣']}
+  };
+  const XDE = {
+    mazu:{n:'Mazu', alias:'Heavenly Holy Mother', pray:['safe voyages','good weather','family peace']},
+    baosheng:{n:'Baosheng Dadi', alias:'Dadaogong', pray:['health and healing','warding off illness']},
+    qingshui:{n:'Qingshui Zushi', alias:'Zushigong', pray:['averting disaster','protection']},
+    kaizhang:{n:'Kaizhang Shengwang', alias:'Sacred King Chen', pray:['protecting the community']},
+    sanshan:{n:'Three Mountain Kings', alias:'gods of Mounts Jin, Ming and Du', pray:['guarding the village','good harvests']},
+    chenghuang:{n:'City God', alias:'Xia-Hai City God', pray:['peace and safety','love and marriage (via the matchmaker god)']}
+  };
+  const XF = id => LANG === 'en' ? XDE[id] : XD[id];
+  const xcol = id => id === 'chenghuang' ? (isDark() ? '#A9AFBD' : '#4E5566') : col(id);
+  const PARTS = [
+    {id:'sanchuan', t:'三川殿', en:'Front Hall', d:() => '廟的入口建築。中間屋頂抬高、兩側較低，形成三段屋脊，稱為「三川脊」；規模較小的廟，入口可能只有單一屋脊。', den:() => 'The temple’s entrance hall. Its middle roof rises above the two sides, forming a three-part ridge; smaller temples may have just one ridge at the entrance.', off:[10,6,18], lab:[110,26]},
+    {id:'yanwei', t:'燕尾脊', en:'Swallowtail Ridge', d:() => '屋脊兩端向上翹起、末端分岔如燕子尾巴，是閩南式廟宇最醒目的特徵。', den:() => 'The ends of the ridge sweep up and split like a swallow’s tail, the most striking feature of southern Fujian–style temples.', off:[-4,3,9], lab:[-120,-64]},
+    {id:'jiannian', t:'剪黏', en:'Cut-and-Paste Porcelain', d:() => '把彩色瓷片剪成小片，黏貼出龍、鳳、花鳥與人物。屋脊正中常見「雙龍搶珠」。', den:() => 'Colored porcelain is cut into small pieces and pasted into dragons, phoenixes, flowers, birds and figures. The center of the ridge often shows two dragons chasing a pearl.', off:[3,3,9], lab:[60,-86]},
+    {id:'longzhu', t:'龍柱', en:'Dragon Columns', d:() => '雕有蟠龍的石柱，多立在三川殿前，是石雕工藝的展示重點。', den:() => 'Stone columns carved with coiling dragons, usually in front of the entrance hall: a showcase of stone carving.', off:[4,1.2,7], lab:[-130,40]},
+    {id:'menshen', t:'門神', en:'Door Gods', d:() => '彩繪在廟門上的守護神，民間廟宇的中門常見秦叔寶與尉遲恭。', den:() => 'Guardian gods painted on the temple doors. The center doors of folk temples often show Qin Shubao and Yuchi Gong.', off:[2,.8,7.5], lab:[-110,96]},
+    {id:'censer', t:'天公爐', en:'Censer of Heaven', d:() => '廟前祭拜玉皇上帝的香爐。參拜通常從這裡開始，先拜天公，再入殿拜主神。', den:() => 'The censer in front of the temple, for the Jade Emperor. Worship usually starts here: first Heaven, then the main deity inside.', off:[5,3,7], lab:[90,40]},
+    {id:'zhengdian', t:'正殿', en:'Main Hall', d:() => `供奉主祀神明的殿堂，位在三川殿後方的中庭盡頭。這間廟主祀${XD[cur.deity].n}，信眾主要祈求${prayOf(cur).join('、')}。`, off:[9,11,12], lab:[80,-60], den:() => `The hall enshrining the main deity, at the far end of the courtyard behind the entrance hall. This temple’s main deity is ${XDE[cur.deity].n}; worshippers mostly pray for ${prayOf(cur).join(', ')}.`}
+  ];
+  const prayOf = b => BF(b, 'pray') || XF(b.deity).pray;
+  const ptxt = pp => LANG === 'en' ? pp.den() : pp.d();
+  let inited = false, running = false, renderer, scene, camera, controls, hemi, sun, lampA, lampB, kit, world;
+  let built = null, A = {}, lanterns = [], smoke = null, overview = null, cur = null, tween = null, selected = -1, px = 0, py = 0;
+  const stage = $('xStage'), layer = $('xHs'), leaders = $('xLeaders'), detail = $('xDetail'), dossier = $('xDossier'), curtain = $('xCurtain'), chipsX = $('xChips');
+  let hsEls = [], leadEls = [];
+  function buildTemple(cfg, seed){
+    if(built){ world.remove(built.group); kit.dispose(built.group, built.mats); }
+    built = kit.buildTemple(cfg); A = built.A; lanterns = built.lanterns; smoke = built.smoke;
+    const fp = built.fp;
+    kit.buildCity(built.group, seed, {x0:-fp.pw/2 - 2, x1:fp.pw/2 + 2, z0:fp.zBack - 2, z1:fp.cz + 4});
+    lampA.position.set(...built.lamps[0]); lampB.position.set(...built.lamps[1]);
+    world.add(built.group);
+    const target = new THREE.Vector3(0, 2, (fp.zBack + fp.cz)/2), az = .62, el = .64, dist = xMobile() ? 100 : 80;
+    const pos2 = target.clone().add(new THREE.Vector3(Math.sin(az)*Math.cos(el), Math.sin(el), Math.cos(az)*Math.cos(el)).multiplyScalar(dist));
+    if(!xMobile()){ const right = target.clone().sub(pos2).normalize().cross(new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(-dist*.09); target.add(right); pos2.add(right); }
+    overview = {target, pos:pos2};
+    controls.minAzimuthAngle = az - .75; controls.maxAzimuthAngle = az + .75;
+  }
+  function flyTo(pos, target, dur = 1300){
+    if(reduce){ camera.position.copy(pos); controls.target.copy(target); tween = null; return; }
+    tween = {p0:camera.position.clone(), t0:controls.target.clone(), pos:pos.clone(), target:target.clone(), st:performance.now(), dur};
+  }
+  function partView(pp){
+    const t = A[pp.id].getWorldPosition(new THREE.Vector3()), pos = t.clone().add(new THREE.Vector3(...pp.off));
+    const right = t.clone().sub(pos).normalize().cross(new THREE.Vector3(0, 1, 0)).normalize();
+    const shift = xMobile() ? new THREE.Vector3(0, -pos.distanceTo(t)*.16, 0) : right.multiplyScalar(pos.distanceTo(t)*.2);
+    return {pos:pos.add(shift), target:t.add(shift)};
+  }
+  const MK = 48.5, mmx = lng => (lng - 115.3)*COS*MK, mmy = lat => (26.6 - lat)*MK;
+  const mpath = pts => 'M' + pts.map(q => mmx(q[0]).toFixed(1) + ',' + mmy(q[1]).toFixed(1)).join('L') + 'Z';
+  function renderMini(b){
+    const x0 = mmx(b.from.lng), y0 = mmy(b.from.lat), x1 = mmx(b.lng), y1 = mmy(b.lat);
+    const qx = (x0 + x1)/2, qy = Math.min(y0, y1) - 45, len = Math.ceil(Math.hypot(x1 - x0, y1 - y0)*1.35);
+    $('xMini').innerHTML = `<path class="cn" d="${mpath(CN)}"/><path class="tw" d="${mpath(TW)}"/>
+      <path class="arc" style="--len:${len}" d="M${x0},${y0} Q${qx},${qy} ${x1},${y1}"/>
+      <circle class="o" cx="${x0}" cy="${y0}" r="5"/><circle class="d" cx="${x1}" cy="${y1}" r="5"/>
+      <text x="${x0}" y="${y0 + 20}" text-anchor="middle">${BF(b, 'fromS')}</text>
+      <text x="${Math.min(x1, LANG === 'en' ? 225 : 255)}" y="${y1 + 20}" text-anchor="middle">${BF(b, 'toS')}</text>`;
+    $('xMini').setAttribute('aria-label', T(`從${b.from.n}到${b.to.s}的遷移路線`, `Migration route from ${BF(b, 'fromN')} to ${BF(b, 'toS')}`));
+  }
+  function renderDossier(b){
+    const d = XF(b.deity);
+    $('xName').textContent = BF(b, 'name');
+    $('xEn').textContent = T(`${b.en}，${b.place}，${b.heritage}`, `${b.name}, ${BF(b, 'place')}. ${BF(b, 'heritage')}`);
+    $('xYear').textContent = b.year; $('xYearNote').textContent = BF(b, 'yearNote');
+    $('xDeity').innerHTML = `<span class="dot" style="background:${xcol(b.deity)}"></span>${d.n}<small>${T(`（${d.alias}）`, ` (${d.alias})`)}</small>`;
+    $('xPray').innerHTML = `<span style="font-size:.82rem;color:var(--muted)">${T('信眾主要祈求', 'Worshippers pray for')}</span>` + prayOf(b).map(q => `<span class="x-tag">${q}</span>`).join('');
+    renderMini(b);
+    $('xRoute').textContent = T(`${b.from.n} → ${b.to.s}，隨${b.group}渡海`, `${BF(b, 'fromN')} → ${BF(b, 'toS')}, carried across by ${BF(b, 'group')}`);
+    $('xStory').textContent = BF(b, 'story');
+    $('xTimeline').innerHTML = BF(b, 'timeline').map(([y, t]) => `<li><b>${y}</b>${t}</li>`).join('');
+    $('xBadge').innerHTML = b.real ? T('<b>真實模型</b>：台北市 3D 建模資料，正式版載入，此處先以風格化模型示意', '<b>Real model</b>: Taipei City’s 3D building data will load in the final version; shown here as a stylized model')
+      : T('<b>風格化模型</b>：此廟不在台北市 3D 建模資料中', '<b>Stylized model</b>: this temple is not in Taipei City’s 3D building data');
+    dossier.scrollTop = 0;
+  }
+  function fillPart(i){
+    const pp = PARTS[i], next = PARTS[(i + 1)%PARTS.length];
+    $('xNum').textContent = String(i + 1).padStart(2, '0'); $('xTitle').textContent = T(pp.t, pp.en); $('xDen').textContent = T(pp.en, pp.t); $('xText').textContent = ptxt(pp);
+    $('xFacts').innerHTML = T(`<dt>廟宇</dt><dd>${cur.name}</dd><dt>建廟</dt><dd>${cur.year} 年</dd><dt>主祀</dt><dd>${XD[cur.deity].n}</dd>`,
+      `<dt>Temple</dt><dd>${BF(cur, 'name')}</dd><dt>Founded</dt><dd>${cur.year}</dd><dt>Main deity</dt><dd>${XDE[cur.deity].n}</dd>`);
+    $('xNext').textContent = T(`下一個：${next.t}`, `Next: ${next.en}`);
+  }
+  function openPart(i){
+    selected = i; fillPart(i);
+    detail.classList.add('on'); dossier.classList.add('away');
+    hsEls.forEach((e, j) => e.setAttribute('aria-pressed', j === i));
+    const v = partView(PARTS[i]); flyTo(v.pos, v.target);
+  }
+  function closePart(){
+    selected = -1; detail.classList.remove('on'); dossier.classList.remove('away');
+    hsEls.forEach(e => e.setAttribute('aria-pressed', 'false'));
+    flyTo(overview.pos, overview.target);
+  }
+  function selectTemple(id, intro){
+    const idx = BIG.findIndex(b => b.id === id); cur = BIG[idx];
+    chipsX.querySelectorAll('.x-chip').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === id));
+    renderDossier(cur);
+    selected = -1; detail.classList.remove('on'); dossier.classList.remove('away');
+    hsEls.forEach(e => e.setAttribute('aria-pressed', 'false'));
+    buildTemple(cur, 11 + idx*97);
+    if(intro && !reduce){
+      camera.position.copy(overview.target.clone().add(new THREE.Vector3(10, 150, 40))); controls.target.copy(overview.target);
+      setTimeout(() => flyTo(overview.pos, overview.target, 2400), 500);
+    } else flyTo(overview.pos, overview.target, 1000);
+  }
+  function applyTheme3(){
+    const dark = isDark(), M = kit.M;
+    scene.background = new THREE.Color(dark ? 0x1b100b : 0xf2e4ce);
+    hemi.intensity = dark ? .45 : .8; sun.intensity = dark ? .55 : 1.05; sun.color.set(dark ? 0xaab4e0 : 0xffe2b8);
+    hemi.groundColor.set(dark ? 0x2a1a12 : 0x6b4a2f);
+    M.city.color.set(dark ? 0x6a4e3a : 0xe8d8bd); M.base.color.set(dark ? 0x3a2419 : 0xd9c6a6);
+    M.water.color.set(dark ? 0x2b4b5c : 0x4f86a3); M.tree.color.set(dark ? 0x6c6a4a : 0xa7a07a);
+    kit.lineMat.color.set(dark ? 0x9a7652 : 0x8a6a4c);
+    lampA.intensity = lampB.intensity = dark ? 2.6 : .35; M.lantern.emissiveIntensity = dark ? 2 : .6;
+    if(cur) renderDossier(cur);
+  }
+  function resize3(){
+    if(!inited) return;
+    const r = stage.getBoundingClientRect(); if(!r.width) return;
+    renderer.setSize(r.width, r.height, false); camera.aspect = r.width/Math.max(1, r.height); camera.updateProjectionMatrix();
+  }
+  const v3 = new THREE.Vector3();
+  function loop(now){
+    if(!running) return;
+    requestAnimationFrame(loop);
+    if(tween){
+      const k = Math.min(1, (now - tween.st)/tween.dur), e = k < .5 ? 4*k*k*k : 1 - Math.pow(-2*k + 2, 3)/2;
+      camera.position.lerpVectors(tween.p0, tween.pos, e); controls.target.lerpVectors(tween.t0, tween.target, e);
+      if(k === 1) tween = null;
+    }
+    controls.update();
+    if(!reduce){ world.rotation.y += (px*.05 - world.rotation.y)*.05; world.rotation.x += (py*.025 - world.rotation.x)*.05; }
+    const t = now/1000;
+    if(!reduce) lanterns.forEach((l, i) => { l.rotation.z = Math.sin(t*1.3 + i)*.05; });
+    if(smoke){
+      const a = smoke.geometry.attributes.position, sd = smoke.userData.seeds;
+      for(let i = 0; i < sd.length; i++){
+        let y = a.getY(i) + (reduce ? 0 : .012 + sd[i]*.01); if(y > 7.5) y = 2.4;
+        const h = y - 2.4;
+        a.setX(i, Math.sin(t*.6 + sd[i]*9)*.15*h + h*.25); a.setY(i, y); a.setZ(i, smoke.userData.cz + Math.cos(t*.5 + sd[i]*7)*.12*h);
+      }
+      a.needsUpdate = true;
+    }
+    const r = stage.getBoundingClientRect(), sc = xMobile() ? .55 : 1;
+    PARTS.forEach((pp, i) => {
+      const e = hsEls[i], ld = leadEls[i], o = A[pp.id];
+      const hide = () => { e.style.display = 'none'; ld.style.display = 'none'; };
+      if(!o || (selected >= 0 && selected !== i)) return hide();
+      o.getWorldPosition(v3); v3.project(camera);
+      if(v3.z > 1 || Math.abs(v3.x) > 1 || Math.abs(v3.y) > 1) return hide();
+      const ax = (v3.x + 1)/2*r.width, ay = (1 - v3.y)/2*r.height, dx = pp.lab[0]*sc, dy = pp.lab[1]*sc, tx2 = ax + dx, ty = ay + dy;
+      e.style.display = ''; ld.style.display = '';
+      e.style.transform = `translate(${tx2}px, ${ty}px) translate(${dx < 0 ? '-100%' : '0'}, -50%)`;
+      const [line, dot] = ld.children;
+      line.setAttribute('x1', ax); line.setAttribute('y1', ay); line.setAttribute('x2', tx2); line.setAttribute('y2', ty);
+      dot.setAttribute('cx', ax); dot.setAttribute('cy', ay);
+    });
+    renderer.render(scene, camera);
+  }
+  function buildXChips(){ chipsX.innerHTML = BIG.map(b => `<button type="button" class="x-chip" data-id="${b.id}" aria-pressed="${!!cur && cur.id === b.id}">${BF(b, 'name')}</button>`).join(''); }
+  function buildHs(){
+    layer.innerHTML = PARTS.map((pp, i) => `<button type="button" class="x-hs" data-i="${i}" aria-pressed="${i === selected}"><span class="n">${i + 1}</span><span><b>${T(pp.t, pp.en)}</b><small>${T(pp.en, pp.t)}</small></span></button>`).join('');
+    hsEls = [...layer.querySelectorAll('.x-hs')];
+  }
+  onLang(() => {
+    if(!inited) return;
+    buildXChips(); buildHs();
+    if(cur) renderDossier(cur);
+    if(selected >= 0) fillPart(selected);
+    $('xPlaque').textContent = cur ? cur.name : '';
+  });
+  function init(){
+    renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    stage.prepend(renderer.domElement);
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(28, 1, .5, 600);
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true; controls.dampingFactor = .08; controls.enablePan = false;
+    controls.minDistance = 10; controls.maxDistance = 130; controls.minPolarAngle = .55; controls.maxPolarAngle = 1.2;
+    controls.addEventListener('start', () => { tween = null; });
+    hemi = new THREE.HemisphereLight(0xfff2dc, 0x6b4a2f, .8); scene.add(hemi);
+    sun = new THREE.DirectionalLight(0xffe2b8, 1.05); sun.position.set(-28, 46, 30); sun.castShadow = true;
+    const smz = xMobile() ? 1024 : 2048; sun.shadow.mapSize.set(smz, smz);
+    Object.assign(sun.shadow.camera, {left:-60, right:60, top:60, bottom:-60, near:1, far:160}); sun.shadow.bias = -.0008;
+    scene.add(sun);
+    lampA = new THREE.PointLight(0xff6a33, 0, 14, 2); lampB = new THREE.PointLight(0xff6a33, 0, 14, 2); scene.add(lampA, lampB);
+    kit = TempleKit(true);
+    world = new THREE.Group(); scene.add(world);
+    buildXChips();
+    chipsX.addEventListener('click', e => { const b = e.target.closest('.x-chip'); if(b && b.dataset.id !== cur.id) selectTemple(b.dataset.id); });
+    buildHs();
+    leaders.innerHTML = PARTS.map(() => '<g><line/><circle r="4"/></g>').join('');
+    leadEls = [...leaders.querySelectorAll('g')];
+    layer.addEventListener('click', e => { const b = e.target.closest('.x-hs'); if(b) openPart(+b.dataset.i); });
+    $('xNext').addEventListener('click', () => openPart((selected + 1)%PARTS.length));
+    $('xBack').addEventListener('click', closePart);
+    $('xClose').addEventListener('click', close);
+    stage.addEventListener('pointermove', e => { if(e.pointerType !== 'mouse') return; const r = stage.getBoundingClientRect(); px = (e.clientX - r.left)/r.width - .5; py = (e.clientY - r.top)/r.height - .5; });
+    new ResizeObserver(resize3).observe(stage);
+    curtain.addEventListener('transitionend', () => { if(curtain.classList.contains('up')) curtain.style.display = 'none'; });
+    inited = true; applyTheme3();
+  }
+  let lastFocus = null;
+  function open(id){
+    lastFocus = document.activeElement;
+    const b = BIG.find(x => x.id === id); if(!b) return;
+    rootEl.hidden = false; document.body.classList.add('x-open'); document.body.style.overflow = 'hidden';
+    if(lenis) lenis.stop();
+    if(S3) S3.pause(true);
+    $('xPlaque').textContent = b.name;
+    if(reduce) curtain.style.display = 'none';
+    else { curtain.style.display = ''; curtain.classList.remove('up'); void curtain.offsetWidth; setTimeout(() => curtain.classList.add('up'), 900); }
+    if(!inited) init();
+    resize3();
+    selectTemple(id, true);
+    if(!running){ running = true; requestAnimationFrame(loop); }
+    $('xClose').focus();
+  }
+  function close(){
+    running = false; rootEl.hidden = true; document.body.classList.remove('x-open'); document.body.style.overflow = '';
+    if(lenis) lenis.start();
+    if(S3) S3.pause(false);
+    if(lastFocus && lastFocus.focus) lastFocus.focus({preventScroll:true});
+  }
+  document.addEventListener('keydown', e => {
+    if(e.key !== 'Escape' || rootEl.hidden) return;
+    if(selected >= 0) closePart(); else close();
+  });
+  return {open, close, theme:() => { if(inited) applyTheme3(); }};
+})();
+
+/* ===== 語言切換 ===== */
+const langBtns = [...document.querySelectorAll('#langsw button')];
+function setLang(l){
+  LANG = l === 'en' ? 'en' : 'zh';
+  const h = document.documentElement; h.dataset.lang = LANG; h.lang = LANG === 'en' ? 'en' : 'zh-Hant';
+  try{ localStorage.setItem('gods-lang', LANG); }catch(e){}
+  document.title = T('神明住在哪裡？互動原型', 'Where Do the Gods Live? Interactive prototype');
+  $('q').placeholder = T('例如：福安宮', 'e.g. 福安宮');
+  langBtns.forEach(b => b.setAttribute('aria-pressed', b.dataset.set === LANG));
+  LANG_HOOKS.forEach(f => f());
+}
+langBtns.forEach(b => b.addEventListener('click', () => { if(b.dataset.set !== LANG) setLang(b.dataset.set); }));
+setLang(LANG);
+
+/* 深淺色切換時重繪 */
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if(S3) S3.theme();
+  paintChipsE(); eRequest(); window.T3.theme();
+});
+})();
+</script>
+</body>
+</html>
