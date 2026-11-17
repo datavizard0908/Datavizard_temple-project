@@ -50,6 +50,7 @@ data/
 scripts/        資料處理腳本，依編號順序執行
 reports/        資料體檢報告，先看 reports/SUMMARY.md
 site/           網站（目前是資料預覽頁）
+prototype/      互動網頁設計原型（3D 捲動故事，示範資料），說明見 prototype/README.md
 ```
 
 ### 重跑資料流程
